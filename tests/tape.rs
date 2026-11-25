@@ -100,7 +100,7 @@ fn tape_loads_hands_free_with_typist_and_autoplay() {
     typist.type_text("*LOAD \"TEST\"\n", 100);
     for _ in 0..4000 {
         autoplay.update(&mut atom, &mut typist);
-        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        typist.drive(&mut atom);
         atom.run_frame();
         if (0..DATA.len()).all(|i| atom.bus.peek(START + i as u16) == DATA[i]) {
             return; // loaded

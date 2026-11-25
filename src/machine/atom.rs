@@ -268,6 +268,26 @@ impl Atom {
         VideoMode::from_port_a_high_nibble(self.bus.ppi.video_mode_bits())
     }
 
+    /// Is the Atom waiting for a command? True when BASIC/the OS is showing its
+    /// `>` prompt on the last used line of the text screen, or when a program
+    /// has taken over the display with a graphics mode (so keys go to it).
+    /// False while a command is still running (loading from disk, say), when
+    /// the Atom is not reading the keyboard and would miss key presses.
+    pub fn ready_for_input(&self) -> bool {
+        if self.video_mode() != VideoMode::Text {
+            return true;
+        }
+        let screen = self.screen_text();
+        let Some(last_line) = screen.iter().rev().find(|row| !row.trim().is_empty()) else {
+            return false;
+        };
+        // The prompt is `>`, perhaps followed by the cursor (drawn as `#`).
+        last_line
+            .trim_end()
+            .strip_prefix('>')
+            .is_some_and(|rest| rest.chars().all(|c| c == ' ' || c == '#'))
+    }
+
     /// The text screen (`8000-81FF`, 32 x 16) as ASCII, one `String` per row.
     /// Handy for tests and for the debugger. Semigraphics become `#`.
     pub fn screen_text(&self) -> Vec<String> {

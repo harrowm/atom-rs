@@ -29,7 +29,7 @@ impl TapeAutoplay {
             .count();
         if rows > self.rows_seen {
             atom.bus.tape.playing = true;
-            typist.type_text("\n", atom.bus.vdg.frames);
+            typist.interject("\n"); // the key the Atom is waiting for
         }
         self.rows_seen = rows;
     }

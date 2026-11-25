@@ -223,6 +223,7 @@ impl AtomApp {
         });
 
         let frame = self.atom.bus.vdg.frames;
+        let ready = self.atom.ready_for_input();
         let keyboard = &mut self.atom.bus.ppi.keyboard;
         keyboard.release_all();
         let mut atom_shift = modifiers.shift;
@@ -237,7 +238,7 @@ impl AtomApp {
         keyboard.ctrl = modifiers.ctrl;
         keyboard.rept = modifiers.alt;
         // The typist adds its own key presses on top of the real keyboard's.
-        self.typist.update(keyboard, frame);
+        self.typist.update(keyboard, frame, ready);
 
         // F12 is the BREAK key, which resets the machine.
         if break_pressed {

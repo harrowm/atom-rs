@@ -135,7 +135,7 @@ fn disk_loads_hands_free_with_typist() {
     let mut typist = Typist::new();
     typist.type_text("*DOS\n*LOAD TEST\n", 100);
     for _ in 0..1500 {
-        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        typist.drive(&mut atom);
         atom.run_frame();
         if memory_at(&atom, LOAD_ADDRESS, FILE_DATA.len()) == FILE_DATA {
             return;
@@ -163,4 +163,31 @@ fn dos_loads_a_file_added_with_add_file() {
     type_text(&mut atom, "*LOAD BIGFILE 4000\n");
     run_seconds(&mut atom, 5);
     assert_eq!(memory_at(&atom, 0x4000, data.len()), data);
+}
+
+/// A line typed straight after a disk command must not lose its first key:
+/// the typist has to wait for the Atom to finish and show its prompt, as a
+/// person would. (Keys typed while the Atom is busy loading are simply lost.)
+#[test]
+fn typist_waits_for_a_disk_command_to_finish() {
+    use atom_rs::machine::typist::Typist;
+    let Some(mut atom) = booted_atom(0) else {
+        return;
+    };
+    if !atom.bus.memory.disk_interface_fitted {
+        return;
+    }
+    atom.bus.fdc.drives[0] = Some(disk_with_one_file());
+    let mut typist = Typist::new();
+    typist.type_text("*DOS\n*LOAD TEST\nPRINT 5\n", 100);
+    for _ in 0..1500 {
+        typist.drive(&mut atom);
+        atom.run_frame();
+    }
+    let screen = atom.screen_text().join("\n");
+    assert!(
+        screen.contains("       5"),
+        "PRINT 5 was not understood:\n{screen}"
+    );
+    assert!(!screen.contains("ERROR"), "something went wrong:\n{screen}");
 }

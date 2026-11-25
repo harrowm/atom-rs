@@ -105,7 +105,7 @@ fn run_until(
     done: impl Fn(&Atom) -> bool,
 ) -> bool {
     for _ in 0..max_frames {
-        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        typist.drive(atom);
         atom.run_frame();
         if done(atom) {
             return true;

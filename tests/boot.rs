@@ -120,7 +120,7 @@ fn typist_types_a_basic_line() {
     let mut typist = Typist::new();
     typist.type_text("PRINT 5\n", 0);
     while typist.is_busy() {
-        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        typist.drive(&mut atom);
         atom.run_frame();
     }
     for _ in 0..30 {

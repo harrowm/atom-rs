@@ -72,6 +72,43 @@ The same trick works for any program in the archive: `atom_rs`'s
 `atm2ssd` example (`cargo run --release --example atm2ssd -- OUT.ssd FILE...`)
 packs `.atm` files onto a disk, and `--run` types the command to start it.
 
+### More games from the archive
+
+`scripts/make_game.sh` packs any program from the archive onto a disk and
+prints how to start it (it reads the program's header to tell BASIC programs
+from machine code). For example:
+
+```sh
+./scripts/make_game.sh AS/GAMES09/SNAPPER snapper
+cargo run --release -- --disk testdata/games/snapper.ssd --run 'LOAD "SNAPPER"\nRUN\n'
+```
+
+These all load and reach their title, menu or first screen in the emulator.
+(Checked by running them and looking at the picture; only Chuckie Egg has been
+played properly.)
+
+| Game | Archive path | `--run` text |
+|------|--------------|--------------|
+| Chuckie Egg | `RS/CHUCKIE` (a folder) | `'*RUN RUNME\n'` |
+| Snapper (Pac-Man style) | `AS/GAMES09/SNAPPER` | `'LOAD "SNAPPER"\nRUN\n'` |
+| Pinball | `BB/PINBALL` | `'LOAD "PINBALL"\nRUN\n'` |
+| Space Panic | `AF/PANIC` | `'*RUN PANIC\n'` |
+| Frogger | `AF/FROGGER` | `'*RUN FROGGER\n'` |
+| Galaxians | `AA/GALAXIAN` | `'*RUN GALAXIA\n'` |
+| Space Invaders | `AA/INVADER` | `'*RUN INVADER\n'` |
+| Asteroids | `AS/GAMES01/ASTEROID` | `'*RUN ASTEROI\n'` |
+| Breakout | `AS/GAMES01/BREAKOUT` | `'*RUN BREAKOU\n'` |
+| Elite (Retro Software port) | `RS/ELITE` (a folder) | `'*RUN ELITE\n'` |
+| Repton (Retro Software port) | `RS/REPTON` (a folder) | `'*RUN LOADER\n'` |
+| Jet Set Willy (Retro Software port) | `RS/JSW` (a folder) | `'LOAD "JSWRUN"\nRUN\n'` |
+
+(Names are at most 7 characters on a disk, so longer ones are cut: `GALAXIAN`
+becomes `GALAXIA`.) A BASIC program is started with BASIC's own `LOAD` and `RUN`;
+`*RUN` is for machine code, and for BASIC programs that start themselves.
+
+The typist waits for the Atom's `>` prompt after each RETURN, as a person
+would, so a second command typed right after a disk load is not lost.
+
 ### Starting a program from the command line
 
 Give the emulator a disk or tape and the command to start it, and it types the
