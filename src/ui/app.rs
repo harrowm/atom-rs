@@ -1,6 +1,6 @@
 //! The main emulator window: menu bar, the Atom's screen and a status bar.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, TextureHandle, TextureOptions, Vec2};
@@ -8,13 +8,16 @@ use eframe::egui::{self, Key, TextureHandle, TextureOptions, Vec2};
 use super::audio::AudioOutput;
 use super::debug::{AppState, Command, DebugWindows};
 use super::keymap::atom_key_for;
+use crate::cli::Options;
 use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
+use atom_rs::machine::autoplay::TapeAutoplay;
 use atom_rs::machine::debug::StopReason;
 use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::keyboard::find_key;
 use atom_rs::machine::memory::RomSlot;
 use atom_rs::machine::tape::TapeImage;
+use atom_rs::machine::typist::Typist;
 use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
 use atom_rs::machine::video::{HEIGHT, WIDTH};
 
@@ -34,6 +37,10 @@ const MAX_EMULATION_TIME_PER_UPDATE: Duration = Duration::from_millis(12);
 const SLICE_CYCLES: u64 = 20_000;
 
 const MAX_SPEED: f32 = 100.0;
+
+/// Frames the Atom needs after power-on before it shows its `>` prompt;
+/// text from `--run` is typed after this.
+const BOOT_FRAMES: u64 = 100;
 
 /// "Run one frame" in the debugger (NTSC: 262 lines).
 const CYCLES_PER_FRAME: u64 = 262 * CYCLES_PER_LINE as u64;
@@ -61,6 +68,11 @@ pub struct AtomApp {
     notice: Option<String>,
     /// Where the last `.atm` file loaded says to start it.
     loaded_exec: Option<u16>,
+    /// Types commands for us (from `--run`, or the tape auto-play).
+    typist: Typist,
+    /// Start the tape by itself when the Atom says PLAY TAPE.
+    autoplay_tape: bool,
+    autoplay: TapeAutoplay,
     /// The in-memory quick-save slot (F6 saves, F7 restores).
     quick_state: Option<Vec<u8>>,
     /// The file each disk was loaded from, so Save can write it back.
@@ -77,7 +89,7 @@ pub struct AtomApp {
 }
 
 impl AtomApp {
-    pub fn new(rom_dir: PathBuf, open_debug_windows: bool) -> Self {
+    pub fn new(rom_dir: PathBuf, options: Options) -> Self {
         let mut app = AtomApp {
             atom: Atom::new(),
             rom_dir,
@@ -95,6 +107,9 @@ impl AtomApp {
             loaded_exec: None,
             disk_paths: [None, None],
             quick_state: None,
+            typist: Typist::new(),
+            autoplay_tape: false,
+            autoplay: TapeAutoplay::default(),
             last_update: Instant::now(),
             cycle_debt: 0.0,
             achieved_speed: 0.0,
@@ -105,12 +120,47 @@ impl AtomApp {
         app.load_roms();
         app.start_audio();
         let windows = &mut app.debug_windows;
-        windows.show_cpu = open_debug_windows;
-        windows.show_disassembly = open_debug_windows;
-        windows.show_memory = open_debug_windows;
-        windows.show_breakpoints = open_debug_windows;
-        windows.show_hardware = open_debug_windows;
+        windows.show_cpu = options.debug;
+        windows.show_disassembly = options.debug;
+        windows.show_memory = options.debug;
+        windows.show_breakpoints = options.debug;
+        windows.show_hardware = options.debug;
+        app.apply_start_options(&options);
         app
+    }
+
+    /// Insert the disks and tape, restore the state and queue the commands
+    /// asked for on the command line.
+    fn apply_start_options(&mut self, options: &Options) {
+        if self.rom_error.is_some() {
+            return;
+        }
+        for (drive, path) in options.disks.iter().enumerate() {
+            if let Some(path) = path {
+                self.insert_disk_file(drive, path);
+            }
+        }
+        if let Some(path) = &options.tape {
+            self.insert_tape_file(path);
+            self.autoplay_tape = true;
+        }
+        self.fast_tape = options.fast_tape;
+        let mut start_delay = BOOT_FRAMES;
+        if let Some(path) = &options.state {
+            self.load_state_path(path);
+            start_delay = 0; // a restored machine is already running
+        }
+        if let Some(text) = &options.run {
+            // The disk system must be switched on before it can run anything.
+            let uses_disk = options.disks.iter().any(Option::is_some);
+            let text = if uses_disk && !text.starts_with("*DOS") {
+                format!("*DOS\n{text}")
+            } else {
+                text.clone()
+            };
+            let start = self.atom.bus.vdg.frames + start_delay;
+            self.typist.type_text(&text, start);
+        }
     }
 
     fn start_audio(&mut self) {
@@ -172,6 +222,7 @@ impl AtomApp {
             )
         });
 
+        let frame = self.atom.bus.vdg.frames;
         let keyboard = &mut self.atom.bus.ppi.keyboard;
         keyboard.release_all();
         let mut atom_shift = modifiers.shift;
@@ -185,6 +236,8 @@ impl AtomApp {
         keyboard.shift = atom_shift;
         keyboard.ctrl = modifiers.ctrl;
         keyboard.rept = modifiers.alt;
+        // The typist adds its own key presses on top of the real keyboard's.
+        self.typist.update(keyboard, frame);
 
         // F12 is the BREAK key, which resets the machine.
         if break_pressed {
@@ -203,6 +256,9 @@ impl AtomApp {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_update).as_secs_f64();
         self.last_update = now;
+        if self.autoplay_tape {
+            self.autoplay.update(&mut self.atom, &mut self.typist);
+        }
         if !self.running || self.rom_error.is_some() {
             return;
         }
@@ -265,8 +321,13 @@ impl AtomApp {
             .set_title("Insert tape")
             .add_filter("UEF tape images", &["uef"])
             .pick_file();
-        let Some(path) = picked else { return };
-        let result = std::fs::read(&path)
+        if let Some(path) = picked {
+            self.insert_tape_file(&path);
+        }
+    }
+
+    fn insert_tape_file(&mut self, path: &Path) {
+        let result = std::fs::read(path)
             .map_err(|e| e.to_string())
             .and_then(|data| TapeImage::from_uef(&data));
         self.notice = Some(match result {
@@ -369,8 +430,13 @@ impl AtomApp {
             .set_title("Load state")
             .add_filter("Atom saved states", &["atomstate"])
             .pick_file();
-        let Some(path) = picked else { return };
-        match std::fs::read(&path) {
+        if let Some(path) = picked {
+            self.load_state_path(&path);
+        }
+    }
+
+    fn load_state_path(&mut self, path: &Path) {
+        match std::fs::read(path) {
             Ok(state) => self.restore_state(&state, &format!("Restored {}", path.display())),
             Err(e) => self.notice = Some(format!("Cannot read {}: {e}", path.display())),
         }
@@ -383,7 +449,12 @@ impl AtomApp {
             .set_title(format!("Insert disk in drive {drive}"))
             .add_filter("Disk images", &["ssd", "dsd"])
             .pick_file();
-        let Some(path) = picked else { return };
+        if let Some(path) = picked {
+            self.insert_disk_file(drive, &path);
+        }
+    }
+
+    fn insert_disk_file(&mut self, drive: usize, path: &Path) {
         // .dsd files hold two sides; .ssd one.
         let sides = if path
             .extension()
@@ -393,13 +464,13 @@ impl AtomApp {
         } else {
             1
         };
-        let result = std::fs::read(&path)
+        let result = std::fs::read(path)
             .map_err(|e| e.to_string())
             .and_then(|data| DiskImage::from_bytes(data, sides));
         self.notice = Some(match result {
             Ok(disk) => {
                 self.atom.bus.fdc.drives[drive] = Some(disk);
-                self.disk_paths[drive] = Some(path.clone());
+                self.disk_paths[drive] = Some(path.to_path_buf());
                 if self.atom.bus.memory.disk_interface_fitted {
                     format!(
                         "Disk {drive}: {}. Type *DOS to use the disk system.",

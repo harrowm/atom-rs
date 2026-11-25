@@ -5,6 +5,7 @@
 
 pub mod atm;
 pub mod atom;
+pub mod autoplay;
 pub mod debug;
 pub mod disk;
 pub mod fdc8271;
@@ -15,6 +16,7 @@ pub mod ppi8255;
 pub mod snapshot;
 pub mod sound;
 pub mod tape;
+pub mod typist;
 pub mod vdg6847;
 pub mod via6522;
 pub mod video;

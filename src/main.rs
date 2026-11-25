@@ -1,7 +1,8 @@
 //! Acorn Atom emulator: the desktop application.
 //!
-//! Usage: `atom-rs [--debug] [ROM_FOLDER]`
+//! Run `atom-rs --help` for the options.
 
+mod cli;
 mod ui;
 
 use std::path::PathBuf;
@@ -25,18 +26,20 @@ fn default_rom_dir() -> PathBuf {
 }
 
 fn main() -> eframe::Result {
-    let mut open_debug_windows = false;
-    let mut rom_dir = None;
-    for arg in std::env::args_os().skip(1) {
-        if arg == "--debug" {
-            open_debug_windows = true;
-        } else {
-            rom_dir = Some(PathBuf::from(arg));
+    let options = match cli::parse(std::env::args_os().skip(1)) {
+        Ok(cli::Parsed::Run(options)) => *options,
+        Ok(cli::Parsed::Help) => {
+            print!("{}", cli::USAGE);
+            return Ok(());
         }
-    }
-    let rom_dir = rom_dir.unwrap_or_else(default_rom_dir);
+        Err(message) => {
+            eprintln!("atom-rs: {message}");
+            std::process::exit(2);
+        }
+    };
+    let rom_dir = options.rom_dir.clone().unwrap_or_else(default_rom_dir);
 
-    let options = eframe::NativeOptions {
+    let native_options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Acorn Atom")
             .with_inner_size([800.0, 640.0]),
@@ -44,9 +47,7 @@ fn main() -> eframe::Result {
     };
     eframe::run_native(
         "Acorn Atom",
-        options,
-        Box::new(move |_creation_context| {
-            Ok(Box::new(ui::app::AtomApp::new(rom_dir, open_debug_windows)))
-        }),
+        native_options,
+        Box::new(move |_creation_context| Ok(Box::new(ui::app::AtomApp::new(rom_dir, options)))),
     )
 }

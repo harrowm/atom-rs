@@ -119,3 +119,27 @@ fn dos_saves_a_file_to_disk_and_loads_it_back() {
     run_seconds(&mut atom, 5);
     assert!(atom.screen_text().join("\n").contains("SAVED"));
 }
+
+/// What `--disk FILE --run '*LOAD TEST\n'` does: *DOS is typed first, then
+/// the command.
+#[test]
+fn disk_loads_hands_free_with_typist() {
+    use atom_rs::machine::typist::Typist;
+    let Some(mut atom) = booted_atom(0) else {
+        return;
+    };
+    if !atom.bus.memory.disk_interface_fitted {
+        return;
+    }
+    atom.bus.fdc.drives[0] = Some(disk_with_one_file());
+    let mut typist = Typist::new();
+    typist.type_text("*DOS\n*LOAD TEST\n", 100);
+    for _ in 0..1500 {
+        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        atom.run_frame();
+        if memory_at(&atom, LOAD_ADDRESS, FILE_DATA.len()) == FILE_DATA {
+            return;
+        }
+    }
+    panic!("the file never loaded:\n{}", atom.screen_text().join("\n"));
+}

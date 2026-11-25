@@ -48,6 +48,36 @@ cargo run --release -- /path/to/roms  # use a different ROM folder
 cargo build --release                 # just build; binary is target/release/atom-rs
 ```
 
+### Starting a program from the command line
+
+Give the emulator a disk or tape and the command to start it, and it types the
+command for you once the Atom has started:
+
+```sh
+# a disk: "*DOS" is typed first for you, then the command
+cargo run --release -- --disk games.ssd --run '*RUN CHUCKIE\n'
+
+# a tape: it presses play and a key by itself when the Atom says PLAY TAPE
+cargo run --release -- --tape chuckie.uef --fast-tape --run 'LOAD "CHUCKIE"\nRUN\n'
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--disk FILE`, `--disk1 FILE` | `.ssd` / `.dsd` image in drive 0 / 1 |
+| `--tape FILE` | `.uef` tape (plain or gzipped); plays itself when asked |
+| `--run TEXT` | text to type after start-up; `\n` is RETURN |
+| `--fast-tape` | maximum speed while the tape is playing |
+| `--state FILE` | start from a saved state |
+| `--debug` | open the debugger windows |
+| `--help` | list the options |
+| `ROM_FOLDER` | where the ROMs are (default `./roms`) |
+
+What to type depends on the program: BASIC programs are `LOAD "NAME"` then
+`RUN`; machine-code programs are usually `*RUN "NAME"`. Atomulator's readme
+has examples. The Atom prints nothing while a tape loads, so be patient (or use
+`--fast-tape`). Note that `--run` only types: you still need your own copy of
+any game.
+
 `--release` is recommended, but a plain `cargo run` is fast enough too (the dev
 profile is lightly optimised). The ROM folder is found automatically from
 wherever you start the program.
@@ -142,7 +172,7 @@ cargo test --lib                      # fast unit tests only
 cargo test --test single_step         # SingleStepTests: ~2.5 million cases
 OPCODE=a9 cargo test --test single_step -- --nocapture   # just one opcode
 cargo test --test dormann -- --nocapture                 # Dormann + decimal + interrupt
-cargo test --test boot -- --nocapture                    # boot the ROMs, type BASIC lines
+cargo test --test boot -- --nocapture                    # boot the ROMs, type BASIC lines, save states
 cargo test --test tape -- --nocapture                    # *SAVE to tape, wipe memory, *LOAD it back
 cargo test --test disk -- --nocapture                    # the real DOS lists, loads and saves on a disk image
 ```

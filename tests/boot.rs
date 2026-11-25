@@ -109,3 +109,22 @@ fn save_state_restores_a_running_basic_session() {
     type_text(&mut atom, "PRINT 4\n");
     assert!(screen_string(&atom).contains("       4"));
 }
+
+/// The typist types a BASIC line into a running Atom.
+#[test]
+fn typist_types_a_basic_line() {
+    use atom_rs::machine::typist::Typist;
+    let Some(mut atom) = booted_atom(100) else {
+        return;
+    };
+    let mut typist = Typist::new();
+    typist.type_text("PRINT 5\n", 0);
+    while typist.is_busy() {
+        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        atom.run_frame();
+    }
+    for _ in 0..30 {
+        atom.run_frame();
+    }
+    assert!(screen_string(&atom).contains("       5"));
+}

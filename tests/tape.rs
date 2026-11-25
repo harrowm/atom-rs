@@ -69,3 +69,45 @@ fn save_to_tape_then_load_it_back() {
         .collect();
     assert_eq!(loaded, DATA, "program was not loaded back from tape");
 }
+
+/// What `--tape FILE --run '*LOAD "TEST"\n'` does: the typist types the
+/// command and auto-play presses play and a key when the Atom asks.
+#[test]
+fn tape_loads_hands_free_with_typist_and_autoplay() {
+    use atom_rs::machine::autoplay::TapeAutoplay;
+    use atom_rs::machine::typist::Typist;
+
+    // First make a tape by saving, as above.
+    let Some(mut atom) = booted_atom(120) else {
+        return;
+    };
+    for (i, &byte) in DATA.iter().enumerate() {
+        atom.bus.poke(START + i as u16, byte);
+    }
+    atom.bus.tape.recording = true;
+    type_text(&mut atom, "*SAVE \"TEST\" 2900 290C\n");
+    type_text(&mut atom, "\n");
+    run_seconds(&mut atom, 25);
+    let tape = atom.bus.tape.finish_recording();
+
+    // A brand new Atom with the tape inserted, and nobody touching the keys.
+    let Some(mut atom) = booted_atom(0) else {
+        return;
+    };
+    atom.bus.tape.insert(tape);
+    let mut typist = Typist::new();
+    let mut autoplay = TapeAutoplay::default();
+    typist.type_text("*LOAD \"TEST\"\n", 100);
+    for _ in 0..4000 {
+        autoplay.update(&mut atom, &mut typist);
+        typist.update(&mut atom.bus.ppi.keyboard, atom.bus.vdg.frames);
+        atom.run_frame();
+        if (0..DATA.len()).all(|i| atom.bus.peek(START + i as u16) == DATA[i]) {
+            return; // loaded
+        }
+    }
+    panic!(
+        "the program never loaded:\n{}",
+        atom.screen_text().join("\n")
+    );
+}
