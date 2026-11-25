@@ -56,6 +56,16 @@ impl Typist {
         self.pending.extend(text.chars());
     }
 
+    /// How many characters are still waiting to be typed.
+    pub fn remaining(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// The frame typing is due to begin at.
+    pub fn start_frame(&self) -> u64 {
+        self.start_at_frame
+    }
+
     /// Is there still something to type, or a key still down?
     pub fn is_busy(&self) -> bool {
         !self.pending.is_empty() || !matches!(self.phase, Phase::Idle)

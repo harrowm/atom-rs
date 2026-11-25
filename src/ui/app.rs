@@ -826,6 +826,18 @@ impl AtomApp {
             if let Some(message) = &self.stop_message {
                 ui.colored_label(egui::Color32::LIGHT_RED, message);
             }
+            if self.typist.is_busy() {
+                // Make the automatic typing visible: waiting for the Atom to
+                // start up, or how much is left to type.
+                let frames = self.atom.bus.vdg.frames;
+                let text = if frames < self.typist.start_frame() {
+                    "Auto-typing soon...".to_string()
+                } else {
+                    format!("Auto-typing ({} keys left)", self.typist.remaining())
+                };
+                ui.separator();
+                ui.colored_label(egui::Color32::LIGHT_GREEN, text);
+            }
             let tape = &self.atom.bus.tape;
             if tape.recording {
                 ui.separator();
