@@ -1,0 +1,25 @@
+[package]
+name = "atom-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.18.2"
+eframe = "0.37.0"
+flate2 = "1.1.11"
+rfd = "0.18.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+# The SingleStepTests run millions of instructions; optimise tests so a plain
+# `cargo test` is fast enough.
+[profile.test]
+opt-level = 3
+
+# Emulators need speed even in debug builds: optimise our code a little and
+# dependencies (egui, serde) fully.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

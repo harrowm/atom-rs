@@ -1,0 +1,2 @@
+# Default rustfmt style, with a slightly wider line for readable comments.
+max_width = 100
