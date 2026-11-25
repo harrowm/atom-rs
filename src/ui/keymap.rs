@@ -71,6 +71,47 @@ impl Target {
     }
 }
 
+/// The three sections the Keyboard window lists Atom keys in. Few people
+/// rebind letters or digits, so those start folded away.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Group {
+    /// Punctuation and every key that is not a letter or digit: RETURN,
+    /// SPACE, the cursor keys, LOCK, and the separately wired SHIFT, CTRL, REPT.
+    Symbols,
+    Letters,
+    Numbers,
+}
+
+impl Group {
+    pub const ALL: [Group; 3] = [Group::Symbols, Group::Letters, Group::Numbers];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Group::Symbols => "Symbols and special keys",
+            Group::Letters => "Letters",
+            Group::Numbers => "Numbers",
+        }
+    }
+}
+
+impl Target {
+    pub fn group(&self) -> Group {
+        match self {
+            Target::Key { name, .. } if name.len() == 1 => {
+                let c = name.chars().next().expect("length is 1");
+                if c.is_ascii_alphabetic() {
+                    Group::Letters
+                } else if c.is_ascii_digit() {
+                    Group::Numbers
+                } else {
+                    Group::Symbols
+                }
+            }
+            _ => Group::Symbols,
+        }
+    }
+}
+
 /// Every Atom key a host key can be bound to, in the order the Keyboard
 /// window lists them: letters, digits, then everything else.
 pub fn all_targets() -> Vec<Target> {
@@ -283,6 +324,20 @@ mod tests {
                 "{host} is not an egui key name"
             );
         }
+    }
+
+    #[test]
+    fn atom_keys_are_sorted_into_symbols_letters_and_numbers() {
+        assert_eq!(Target::key("A").group(), Group::Letters);
+        assert_eq!(Target::key("7").group(), Group::Numbers);
+        assert_eq!(Target::key(";").group(), Group::Symbols);
+        assert_eq!(Target::key("RETURN").group(), Group::Symbols);
+        assert_eq!(Target::Rept.group(), Group::Symbols);
+        let targets = all_targets();
+        let count = |g: Group| targets.iter().filter(|t| t.group() == g).count();
+        assert_eq!(count(Group::Letters), 26);
+        assert_eq!(count(Group::Numbers), 10);
+        assert_eq!(count(Group::Symbols), targets.len() - 36);
     }
 
     #[test]

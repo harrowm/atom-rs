@@ -165,8 +165,10 @@ wherever you start the program.
 
 ### Changing the keys
 
-**View > Keyboard mapping...** opens a window listing every Atom key and the
-keys on your keyboard that press it. Click **Set** next to an Atom key, then
+**View > Keyboard mapping...** opens a window listing the Atom keys and the
+keys on your keyboard that press them, in three folding sections: *Symbols and
+special keys* (open), then *Letters* and *Numbers* (folded away, since few
+people rebind those; typing in the filter box opens any section with a match). Click **Set** next to an Atom key, then
 press the key you want; click a key's name to remove it; **Reset all to
 defaults** puts everything back. A key can only do one thing, so binding it to
 a new Atom key takes it off the old one (the window tells you what it

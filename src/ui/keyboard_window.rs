@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Color32, Event, Key, RichText};
 
-use super::keymap::{KeyMap, Target, all_targets};
+use super::keymap::{Group, KeyMap, Target, all_targets};
 
 /// How a host key is shown: `]` rather than `CloseBracket`. (egui's symbols
 /// for keys such as the arrows are not ASCII and may not be in the font, so
@@ -82,47 +82,71 @@ impl KeyboardWindow {
         }
         ui.separator();
 
+        let filter = self.filter.trim().to_ascii_uppercase();
+        let matches = |target: &Target| {
+            filter.is_empty() || target.label().to_ascii_uppercase().contains(&filter)
+        };
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                egui::Grid::new("keyboard-map")
-                    .num_columns(3)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.strong("Atom key");
-                        ui.strong("Your keys");
-                        ui.label("");
-                        ui.end_row();
-
-                        let filter = self.filter.trim().to_ascii_uppercase();
-                        for target in all_targets() {
-                            if !filter.is_empty()
-                                && !target.label().to_ascii_uppercase().contains(&filter)
-                            {
-                                continue;
-                            }
-                            changed |= self.row(ui, map, &target);
-                        }
-                        // Keys such as the Down arrow that press an Atom key with
-                        // Shift held do not have a row of their own: list them here.
-                        for (host, target) in map.shifted_bindings() {
-                            if filter.is_empty()
-                                || target.label().to_ascii_uppercase().contains(&filter)
-                            {
-                                ui.monospace(target.label());
-                                if ui
-                                    .small_button(format!("{}  x", host_label(&host)))
-                                    .clicked()
-                                {
-                                    map.unbind(&host);
-                                    changed = true;
+                for group in Group::ALL {
+                    let targets: Vec<Target> = all_targets()
+                        .into_iter()
+                        .filter(|t| t.group() == group)
+                        .collect();
+                    // While searching, open every section that has a match.
+                    let has_match = targets.iter().any(&matches);
+                    if !filter.is_empty() && !has_match && group != Group::Symbols {
+                        continue;
+                    }
+                    let mut section = egui::CollapsingHeader::new(group.title())
+                        .id_salt(group.title())
+                        .default_open(group == Group::Symbols);
+                    if !filter.is_empty() {
+                        section = section.open(Some(true));
+                    }
+                    section.show(ui, |ui| {
+                        egui::Grid::new(("keyboard-map", group.title()))
+                            .num_columns(3)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for target in targets.iter().filter(|t| matches(t)) {
+                                    changed |= self.row(ui, map, target);
                                 }
-                                ui.label("");
-                                ui.end_row();
-                            }
-                        }
+                                if group == Group::Symbols {
+                                    changed |= self.shifted_rows(ui, map, &matches);
+                                }
+                            });
                     });
+                }
             });
+        changed
+    }
+
+    /// Keys such as the Down arrow press an Atom key with Shift held, so they
+    /// have no row of their own: list them after the symbols.
+    fn shifted_rows(
+        &mut self,
+        ui: &mut egui::Ui,
+        map: &mut KeyMap,
+        matches: &dyn Fn(&Target) -> bool,
+    ) -> bool {
+        let mut changed = false;
+        for (host, target) in map.shifted_bindings() {
+            if !matches(&target) {
+                continue;
+            }
+            ui.monospace(target.label());
+            if ui
+                .small_button(format!("{}  x", host_label(&host)))
+                .clicked()
+            {
+                map.unbind(&host);
+                changed = true;
+            }
+            ui.label("");
+            ui.end_row();
+        }
         changed
     }
 
