@@ -5,6 +5,16 @@ use eframe::egui::{self, Color32, Event, Key, RichText};
 
 use super::keymap::{KeyMap, Target, all_targets};
 
+/// How a host key is shown: `]` rather than `CloseBracket`. (egui's symbols
+/// for keys such as the arrows are not ASCII and may not be in the font, so
+/// those keep their names.)
+fn host_label(name: &str) -> String {
+    match Key::from_name(name) {
+        Some(key) if key.symbol_or_name().is_ascii() => key.symbol_or_name().to_string(),
+        _ => name.to_string(),
+    }
+}
+
 #[derive(Default)]
 pub struct KeyboardWindow {
     pub open: bool,
@@ -28,7 +38,7 @@ impl KeyboardWindow {
             egui::ViewportId::from_hash_of("keyboard-mapping"),
             egui::ViewportBuilder::default()
                 .with_title("Keyboard mapping")
-                .with_inner_size([560.0, 680.0]),
+                .with_inner_size([640.0, 680.0]),
             |ui, _class| {
                 close_requested = ui.input(|i| i.viewport().close_requested());
                 egui::CentralPanel::default().show(ui, |ui| {
@@ -100,7 +110,10 @@ impl KeyboardWindow {
                                 || target.label().to_ascii_uppercase().contains(&filter)
                             {
                                 ui.monospace(target.label());
-                                if ui.small_button(format!("{host}  x")).clicked() {
+                                if ui
+                                    .small_button(format!("{}  x", host_label(&host)))
+                                    .clicked()
+                                {
                                     map.unbind(&host);
                                     changed = true;
                                 }
@@ -117,15 +130,17 @@ impl KeyboardWindow {
     fn row(&mut self, ui: &mut egui::Ui, map: &mut KeyMap, target: &Target) -> bool {
         let mut changed = false;
         ui.monospace(target.label());
-        ui.horizontal_wrapped(|ui| {
+        // Not wrapped: a key's name should never be split over two lines.
+        ui.horizontal(|ui| {
             for host in map.host_keys_for(target) {
                 if ui
-                    .small_button(format!("{host}  x"))
+                    .small_button(format!("{}  x", host_label(&host)))
                     .on_hover_text("Remove")
                     .clicked()
                 {
                     map.unbind(&host);
-                    self.message = format!("{host} no longer presses {}", target.label());
+                    self.message =
+                        format!("{} no longer presses {}", host_label(&host), target.label());
                     changed = true;
                 }
             }
@@ -161,11 +176,11 @@ impl KeyboardWindow {
         self.message = match map.bind(key, target.clone()) {
             Some(old) => format!(
                 "{} now presses {} (it used to press {})",
-                key.name(),
+                host_label(key.name()),
                 target.label(),
                 old.label()
             ),
-            None => format!("{} now presses {}", key.name(), target.label()),
+            None => format!("{} now presses {}", host_label(key.name()), target.label()),
         };
         true
     }
