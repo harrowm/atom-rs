@@ -3,7 +3,9 @@
 use atom_rs::machine::Atom;
 use eframe::egui;
 
-pub fn show(ui: &mut egui::Ui, atom: &Atom) {
+pub fn show(ui: &mut egui::Ui, atom: &mut Atom) {
+    unmapped_log(ui, atom);
+    ui.separator();
     let bus = &atom.bus;
 
     ui.heading("Video (6847)");
@@ -82,6 +84,34 @@ pub fn show(ui: &mut egui::Ui, atom: &Atom) {
         ui.monospace(format!(
             "Drive {drive}: head at track {:2}  {disk}",
             fdc.current_track(drive)
+        ));
+    }
+}
+
+/// Software that touches memory or hardware the Atom does not have shows up
+/// here: a quick way to find out what a misbehaving program is missing.
+fn unmapped_log(ui: &mut egui::Ui, atom: &mut Atom) {
+    ui.heading("Unmapped memory");
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut atom.bus.debug.log_unmapped, "Log accesses");
+        if ui.small_button("Clear").clicked() {
+            atom.bus.debug.unmapped.clear();
+        }
+    });
+    // Group by page (the high byte of the address).
+    let mut pages: std::collections::BTreeMap<u8, (usize, u32, u32)> = Default::default();
+    for (&addr, &(reads, writes)) in &atom.bus.debug.unmapped {
+        let page = pages.entry((addr >> 8) as u8).or_default();
+        page.0 += 1;
+        page.1 += reads;
+        page.2 += writes;
+    }
+    if pages.is_empty() {
+        ui.label("(none)");
+    }
+    for (page, (addresses, reads, writes)) in pages.iter().take(12) {
+        ui.monospace(format!(
+            "{page:02X}xx: {addresses:3} addresses  {reads} reads  {writes} writes"
         ));
     }
 }

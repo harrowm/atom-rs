@@ -1,8 +1,9 @@
 //! The Atom's memory map: which chip or memory answers at each address.
 //!
 //! ```text
-//! 0000-03FF  RAM (always present: zero page, stack, OS workspace)
-//! 2000-7FFF  RAM (in the default 25K configuration)
+//! 0000-09FF  RAM (zero page, stack, OS workspace, then the RAM expansion)
+//! 0B00-7FFF  RAM (about 31K in all; `RamLayout::standard()` is the smaller
+//!            25K Atom with RAM only at 0000-03FF and 2000-7FFF)
 //! 8000-9FFF  Video RAM, read by the 6847
 //! 0A00-0AFF  8271 disk controller (only when the disk interface is fitted)
 //! A000-AFFF  Utility ROM socket
@@ -76,6 +77,15 @@ impl RamLayout {
     pub fn standard() -> Self {
         RamLayout {
             ranges: vec![0x0000..0x0400, 0x2000..0x8000],
+        }
+    }
+
+    /// The Atom with its RAM expansion: everything from `0000` to `7FFF`
+    /// except the disk controller's page at `0A00-0AFF`, about 31K. Much
+    /// software (Chuckie Egg, for one) keeps its variables in `0400-07FF`.
+    pub fn expanded() -> Self {
+        RamLayout {
+            ranges: vec![0x0000..0x0A00, 0x0B00..0x8000],
         }
     }
 
@@ -163,6 +173,21 @@ mod tests {
         assert_eq!(memory.region(0xB800), Region::Via);
         assert_eq!(memory.region(0xC000), Region::Rom(RomSlot::Basic));
         assert_eq!(memory.region(0xFFFC), Region::Rom(RomSlot::Kernel));
+    }
+
+    #[test]
+    fn expanded_layout_has_ram_in_the_low_pages_around_the_disk_controller() {
+        // Software such as Chuckie Egg keeps its variables here.
+        let mut memory = Memory::new(RamLayout::expanded());
+        memory.disk_interface_fitted = true;
+        for addr in [0x0400, 0x07FF, 0x09FF, 0x0B00, 0x1FFF, 0x2000, 0x7FFF] {
+            assert_eq!(memory.region(addr), Region::Ram, "{addr:04X}");
+        }
+        assert_eq!(memory.region(0x0A00), Region::Fdc);
+        assert_eq!(
+            Memory::new(RamLayout::standard()).region(0x0400),
+            Region::Unmapped
+        );
     }
 
     #[test]

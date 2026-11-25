@@ -29,6 +29,8 @@ fn chuckie_egg_menu_and_game_start() {
         eprintln!("SKIPPED: no dosrom.rom");
         return;
     }
+    // Log anything the game touches that the machine does not provide.
+    atom.bus.debug.log_unmapped = true;
     let data = std::fs::read(DISK).unwrap();
     atom.bus.fdc.drives[0] = Some(DiskImage::from_bytes(data, 1).unwrap());
 
@@ -66,6 +68,23 @@ fn chuckie_egg_menu_and_game_start() {
             == game_mode
             && lit_pixels(a) > 5000),
         "the game never started"
+    );
+
+    // Let it get to the high scores screen, which is built from tables the
+    // game keeps in low memory (0400-1FFF). When that memory was missing the
+    // table showed garbage and the score read 555555.
+    run_until(&mut atom, &mut typist, 600, |_| false);
+    let stray: Vec<String> = atom
+        .bus
+        .debug
+        .unmapped
+        .keys()
+        .filter(|&&addr| addr < 0xB000)
+        .map(|addr| format!("{addr:04X}"))
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "the game touched memory that does not exist: {stray:?}"
     );
 }
 

@@ -149,3 +149,6 @@ Based on Atomulator. I'll read its source (`atom.c`, `6502.c`, `via.c`, `8255.c`
 
 ### Command-line start-up, DONE
 `--disk`, `--disk1`, `--tape`, `--state`, `--run` and `--fast-tape` (`src/cli.rs`). A typist (`machine/typist.rs`) presses keys by counting emulated frames, and `machine/autoplay.rs` presses play and a key when the Atom prints `PLAY TAPE`. Both are in the library so `tests/tape.rs` and `tests/disk.rs` can run the same hands-free scenarios against the real ROMs. The window itself was only smoke-tested (it starts and stays running); I could not watch it type.
+
+### Chuckie Egg fixes
+Chuckie Egg showed a score of 555555, a high-score table of `dddddddd` and a man who died at once. Cause: no RAM at `0400-09FF` and `0B00-1FFF`, where the game keeps its tables. The default layout is now `RamLayout::expanded()` (about 31K, with the disk controller's page at `0A00` left free). Found with a new debugger feature: a log of accesses to unmapped memory (`Debugger::log_unmapped`, shown in the Hardware window). `tests/software.rs` fails if the game ever touches unmapped memory below `B000`.

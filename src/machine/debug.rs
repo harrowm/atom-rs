@@ -1,6 +1,6 @@
 //! Debugger support: breakpoints, watchpoints and the reason a run stopped.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Break when the CPU reads and/or writes an address.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +42,12 @@ pub struct Debugger {
     pub target: Option<u16>,
     /// Set when the machine stops; the front end reads and clears it.
     pub stop: Option<StopReason>,
+    /// Count accesses to addresses that nothing answers (see [`Debugger::unmapped`]).
+    pub log_unmapped: bool,
+    /// For each unmapped address touched while `log_unmapped` was on:
+    /// `(reads, writes)`. Software that expects hardware or RAM we do not
+    /// provide shows up here.
+    pub unmapped: BTreeMap<u16, (u32, u32)>,
     /// When set, the next instruction runs even if it is at a breakpoint.
     /// Without this you could never resume from a breakpoint.
     pub skip_breakpoint_once: bool,
@@ -51,6 +57,16 @@ impl Debugger {
     pub fn toggle_breakpoint(&mut self, addr: u16) {
         if !self.breakpoints.remove(&addr) {
             self.breakpoints.insert(addr);
+        }
+    }
+
+    /// Called by the bus for an access to unmapped memory (only when logging).
+    pub fn note_unmapped(&mut self, addr: u16, write: bool) {
+        let counts = self.unmapped.entry(addr).or_default();
+        if write {
+            counts.1 += 1;
+        } else {
+            counts.0 += 1;
         }
     }
 

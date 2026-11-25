@@ -50,7 +50,7 @@ pub struct AtomBus {
 impl AtomBus {
     fn new(standard: Standard) -> Self {
         AtomBus {
-            memory: Memory::new(RamLayout::standard()),
+            memory: Memory::new(RamLayout::expanded()),
             ppi: Ppi::default(),
             via: Via::new(),
             vdg: Vdg::new(standard),
@@ -131,7 +131,12 @@ impl Bus for AtomBus {
             Region::Ppi => self.ppi.read(addr),
             Region::Via => self.via.read(addr),
             Region::Fdc => self.fdc.read(addr),
-            Region::Unmapped => open_bus(addr),
+            Region::Unmapped => {
+                if self.debug.log_unmapped {
+                    self.debug.note_unmapped(addr, false);
+                }
+                open_bus(addr)
+            }
         }
     }
 
@@ -145,7 +150,12 @@ impl Bus for AtomBus {
             Region::Ppi => self.ppi.write(addr, value),
             Region::Via => self.via.write(addr, value),
             Region::Fdc => self.fdc.write(addr, value),
-            Region::Rom(_) | Region::Unmapped => {} // writes to ROM go nowhere
+            Region::Rom(_) => {} // writes to ROM go nowhere
+            Region::Unmapped => {
+                if self.debug.log_unmapped {
+                    self.debug.note_unmapped(addr, true);
+                }
+            }
         }
     }
 

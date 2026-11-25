@@ -16,6 +16,9 @@ and comments that explain the hardware being modelled.
 * **Sound and tape:** the speaker plays through your sound card (cpal). Tapes
   load from `.uef` files (also gzipped) and the Atom can record `*SAVE`s to a
   new `.uef`. `.atm` programs can be loaded straight into memory.
+* **Memory:** the Atom is emulated with its RAM expansion (about 31K: `0000-09FF`
+  and `0B00-7FFF`, with the disk controller at `0A00`), since a lot of software
+  keeps its variables in the low pages.
 * **Disks:** an Intel 8271 floppy controller with `.ssd` and `.dsd` disk
   images, working with the real Atom DOS ROM (`*DOS`, `*CAT`, `*LOAD`, `*SAVE`).
 * **Save states:** freeze and restore the whole machine, in a file or a quick
@@ -122,6 +125,11 @@ tapes. **Sound** has mute and volume. **Machine**
 has reset, pause and a speed slider from 0.1x to 100x (the status bar shows
 the speed actually achieved; click `1x` to go back to real speed). **View**
 toggles integer scaling. **Debug** opens the debugger windows.
+
+The **Hardware** debug window has an *Unmapped memory* log: switch it on and it
+lists every address the running program touched that the Atom has nothing at.
+That is how a missing-RAM bug in Chuckie Egg was found, and it is a quick way
+to see what a misbehaving program expects.
 
 Try: `PRINT 2+2`, or `10 PRINT "HELLO"` then `RUN`.
 
