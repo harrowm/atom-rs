@@ -21,6 +21,10 @@ and comments that explain the hardware being modelled.
   keeps its variables in the low pages.
 * **Disks:** an Intel 8271 floppy controller with `.ssd` and `.dsd` disk
   images, working with the real Atom DOS ROM (`*DOS`, `*CAT`, `*LOAD`, `*SAVE`).
+* **Software archive in one command:** `atom-rs --archive` downloads the latest
+  Atom Software Archive (about 1,100 titles), keeps it up to date, and opens its
+  menu. It works through an emulated AtoMMC SD card interface, so any folder of
+  Atom programs can be used as a card too.
 * **Save states:** freeze and restore the whole machine, in a file or a quick
   slot (F6 / F7).
 
@@ -48,12 +52,13 @@ See [`plan.md`](plan.md) for the roadmap and design notes.
 
 ```sh
 cargo run --release                   # build and start the emulator
+cargo run --release -- --archive      # fetch/update the software archive and browse it
 cargo run --release -- --debug        # ...with all the debugger windows open
 cargo run --release -- /path/to/roms  # use a different ROM folder
 cargo build --release                 # just build; binary is target/release/atom-rs
 ```
 
-### Browsing the whole Atom Software Archive (AtoMMC SD card)
+### Quick start: browse the whole Atom Software Archive
 
 The easiest way to try the archive's ~1,100 titles is one command:
 
@@ -99,7 +104,10 @@ file.
 Not emulated yet: SDDOS (disk images stored on the card), so games that insist
 on a floppy still use the disk method below.
 
-### Running games from the Atom Software Archive
+### Running single games from disk images (the manual way)
+
+If you prefer floppy disk images, or want a game that insists on one, you can
+extract a game from the archive and pack it into an `.ssd` yourself.
 
 The [Atom Software Archive](https://github.com/hoglet67/AtomSoftwareArchive)
 is a huge library of Atom software, kept at stardot.org.uk. Each program in it
