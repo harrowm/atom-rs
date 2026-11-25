@@ -48,6 +48,27 @@ cargo run --release -- /path/to/roms  # use a different ROM folder
 cargo build --release                 # just build; binary is target/release/atom-rs
 ```
 
+### Running Chuckie Egg
+
+The [Atom Software Archive](https://github.com/hoglet67/AtomSoftwareArchive)
+holds a huge library of Atom software, stored as individual program files with
+a 22-byte header (the `.atm` format). One script downloads it, takes out the
+Retro Software version of Chuckie Egg and packs it onto a floppy disk image:
+
+```sh
+./scripts/make_chuckie.sh
+cargo run --release -- --disk testdata/games/chuckie.ssd --run '*RUN RUNME\n'
+```
+
+`*RUN RUNME` is the game's own loader. It shows a menu: press **2** for colour
+(or **1** for monochrome). After the intro text you reach the high scores screen:
+press **Start** (see the game for the key) or **K** to change the keys, which
+you can redefine to whatever suits your keyboard.
+
+The same trick works for any program in the archive: `atom_rs`'s
+`atm2ssd` example (`cargo run --release --example atm2ssd -- OUT.ssd FILE...`)
+packs `.atm` files onto a disk, and `--run` types the command to start it.
+
 ### Starting a program from the command line
 
 Give the emulator a disk or tape and the command to start it, and it types the
@@ -175,6 +196,7 @@ cargo test --test dormann -- --nocapture                 # Dormann + decimal + i
 cargo test --test boot -- --nocapture                    # boot the ROMs, type BASIC lines, save states
 cargo test --test tape -- --nocapture                    # *SAVE to tape, wipe memory, *LOAD it back
 cargo test --test disk -- --nocapture                    # the real DOS lists, loads and saves on a disk image
+cargo test --test software -- --nocapture                # Chuckie Egg (needs scripts/make_chuckie.sh first)
 ```
 
 The big CPU tests need external data, which is not stored in this repository:
@@ -220,7 +242,7 @@ src/
   lib.rs        the library (cpu + machine); main.rs is the application
 tests/          SingleStepTests, Dormann tests, boot, tape and disk tests
 examples/       bench.rs
-scripts/        fetch_tests.sh
+scripts/        fetch_tests.sh, make_chuckie.sh
 roms/           your Atom ROMs (git-ignored)
 testdata/       downloaded test suites (git-ignored)
 ```

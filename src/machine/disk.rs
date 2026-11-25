@@ -112,6 +112,138 @@ impl DiskImage {
     }
 }
 
+/// One entry of the disk catalogue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogueEntry {
+    pub name: String,
+    pub load_address: u32,
+    pub exec_address: u32,
+    pub length: u32,
+    pub start_sector: u16,
+}
+
+/// A DFS catalogue holds at most this many files.
+const MAX_FILES: usize = 31;
+const CATALOGUE_ENTRY_SIZE: usize = 8;
+const FIRST_FILE_SECTOR: u16 = 2;
+
+impl DiskImage {
+    /// The files listed in the catalogue (side 0).
+    ///
+    /// Sector 0 holds each file's name (7 characters plus a directory
+    /// character); sector 1 holds where it loads and runs, how long it is and
+    /// where on the disk it starts.
+    pub fn catalogue(&self) -> Vec<CatalogueEntry> {
+        let (Some(names), Some(info)) = (self.read_sector(0, 0, 0), self.read_sector(0, 0, 1))
+        else {
+            return Vec::new();
+        };
+        let count = (info[5] as usize / CATALOGUE_ENTRY_SIZE).min(MAX_FILES);
+        (0..count)
+            .map(|i| {
+                let at = 8 + i * CATALOGUE_ENTRY_SIZE;
+                let name: String = names[at..at + 7]
+                    .iter()
+                    .map(|&b| (b & 0x7F) as char)
+                    .collect();
+                let e = &info[at..at + CATALOGUE_ENTRY_SIZE];
+                // Byte 6 packs the top bits of four 18-bit values.
+                let high = e[6] as u32;
+                CatalogueEntry {
+                    name: name.trim_end().to_string(),
+                    load_address: u16::from_le_bytes([e[0], e[1]]) as u32 | ((high >> 2) & 3) << 16,
+                    exec_address: u16::from_le_bytes([e[2], e[3]]) as u32 | ((high >> 6) & 3) << 16,
+                    length: u16::from_le_bytes([e[4], e[5]]) as u32 | ((high >> 4) & 3) << 16,
+                    start_sector: ((high & 3) << 8 | e[7] as u32) as u16,
+                }
+            })
+            .collect()
+    }
+
+    /// Add a file to the disk and its catalogue, like saving it would.
+    /// `name` is up to 7 characters; the directory is the default (a space).
+    pub fn add_file(
+        &mut self,
+        name: &str,
+        load_address: u32,
+        exec_address: u32,
+        data: &[u8],
+    ) -> Result<(), String> {
+        let name = name.to_ascii_uppercase();
+        if name.is_empty() || name.len() > 7 || !name.is_ascii() {
+            return Err(format!(
+                "{name:?} is not a valid file name (1-7 ASCII characters)"
+            ));
+        }
+        let files = self.catalogue();
+        if files.iter().any(|f| f.name == name) {
+            return Err(format!("{name} is already on the disk"));
+        }
+        if files.len() >= MAX_FILES {
+            return Err(format!("the catalogue is full ({MAX_FILES} files)"));
+        }
+
+        // New files go after the last used sector.
+        let start = files
+            .iter()
+            .map(|f| f.start_sector + (f.length as usize).div_ceil(SECTOR_SIZE) as u16)
+            .max()
+            .unwrap_or(FIRST_FILE_SECTOR)
+            .max(FIRST_FILE_SECTOR);
+        let sectors_needed = data.len().div_ceil(SECTOR_SIZE) as u16;
+        let sectors_on_disk = self.tracks as u16 * SECTORS_PER_TRACK as u16;
+        if start + sectors_needed > sectors_on_disk {
+            return Err(format!("no room for {name}: the disk is full"));
+        }
+
+        // Write the data, one sector at a time.
+        for (i, chunk) in data.chunks(SECTOR_SIZE).enumerate() {
+            let sector = start as usize + i;
+            let mut bytes = [0u8; SECTOR_SIZE];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            let (track, sector) = (sector / SECTORS_PER_TRACK, sector % SECTORS_PER_TRACK);
+            self.write_sector(track as u8, 0, sector as u8, &bytes);
+        }
+
+        // Catalogue entries are kept newest first, so make room at the front.
+        let mut names = self
+            .read_sector(0, 0, 0)
+            .expect("catalogue exists")
+            .to_vec();
+        let mut info = self
+            .read_sector(0, 0, 1)
+            .expect("catalogue exists")
+            .to_vec();
+        let used = files.len() * CATALOGUE_ENTRY_SIZE;
+        names.copy_within(8..8 + used, 8 + CATALOGUE_ENTRY_SIZE);
+        info.copy_within(8..8 + used, 8 + CATALOGUE_ENTRY_SIZE);
+
+        let mut padded = [b' '; CATALOGUE_ENTRY_SIZE];
+        padded[..name.len()].copy_from_slice(name.as_bytes());
+        names[8..16].copy_from_slice(&padded);
+
+        let length = data.len() as u32;
+        info[8..16].copy_from_slice(&[
+            load_address as u8,
+            (load_address >> 8) as u8,
+            exec_address as u8,
+            (exec_address >> 8) as u8,
+            length as u8,
+            (length >> 8) as u8,
+            ((start >> 8) as u8 & 3)
+                | (((load_address >> 16) as u8 & 3) << 2)
+                | (((length >> 16) as u8 & 3) << 4)
+                | (((exec_address >> 16) as u8 & 3) << 6),
+            start as u8,
+        ]);
+        info[5] = (files.len() as u8 + 1) * CATALOGUE_ENTRY_SIZE as u8;
+
+        self.write_sector(0, 0, 0, &names);
+        self.write_sector(0, 0, 1, &info);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +286,48 @@ mod tests {
         let sector1 = disk.read_sector(0, 0, 1).unwrap();
         assert_eq!(((sector1[6] as usize & 3) << 8) | sector1[7] as usize, 800);
         assert_eq!(disk.to_bytes().len(), 80 * TRACK_SIZE);
+    }
+
+    #[test]
+    fn added_files_appear_in_the_catalogue_with_their_data() {
+        let mut disk = DiskImage::blank_80_track(1);
+        let first: Vec<u8> = (0..300u32).map(|i| i as u8).collect(); // 2 sectors
+        disk.add_file("hello", 0x2900, 0xC2B2, &first).unwrap();
+        disk.add_file("DATA", 0x3000, 0x3000, &[7; 10]).unwrap();
+
+        let files = disk.catalogue();
+        assert_eq!(files.len(), 2);
+        // Newest first.
+        assert_eq!(files[0].name, "DATA");
+        assert_eq!((files[0].load_address, files[0].length), (0x3000, 10));
+        assert_eq!(files[1].name, "HELLO");
+        assert_eq!(
+            (files[1].load_address, files[1].exec_address),
+            (0x2900, 0xC2B2)
+        );
+        assert_eq!(files[1].length, 300);
+        // HELLO takes sectors 2-3, so DATA starts at 4.
+        assert_eq!((files[1].start_sector, files[0].start_sector), (2, 4));
+        assert_eq!(disk.read_sector(0, 0, 3).unwrap()[43], first[256 + 43]);
+        assert_eq!(disk.read_sector(0, 0, 4).unwrap()[9], 7);
+    }
+
+    #[test]
+    fn add_file_refuses_bad_names_duplicates_and_overflow() {
+        let mut disk = DiskImage::blank(1, 2); // only 20 sectors
+        assert!(disk.add_file("TOOLONGNAME", 0, 0, &[1]).is_err());
+        assert!(disk.add_file("", 0, 0, &[1]).is_err());
+        disk.add_file("A", 0, 0, &[1]).unwrap();
+        assert!(
+            disk.add_file("a", 0, 0, &[1])
+                .unwrap_err()
+                .contains("already")
+        );
+        assert!(
+            disk.add_file("BIG", 0, 0, &[0; 20 * 256])
+                .unwrap_err()
+                .contains("full")
+        );
     }
 
     #[test]

@@ -143,3 +143,24 @@ fn disk_loads_hands_free_with_typist() {
     }
     panic!("the file never loaded:\n{}", atom.screen_text().join("\n"));
 }
+
+/// Files put on a disk with `add_file` (as the atm2ssd tool does) can be
+/// loaded by the real DOS, with the load address overridden or not.
+#[test]
+fn dos_loads_a_file_added_with_add_file() {
+    let mut disk = DiskImage::blank_80_track(1);
+    let data: Vec<u8> = (0..700u32).map(|i| (i * 7) as u8).collect(); // spans 3 sectors
+    disk.add_file("BIGFILE", 0x3000, 0x3000, &data).unwrap();
+    let Some(mut atom) = atom_with_disk(disk) else {
+        return;
+    };
+
+    type_text(&mut atom, "*LOAD BIGFILE\n");
+    run_seconds(&mut atom, 5);
+    assert_eq!(memory_at(&atom, 0x3000, data.len()), data);
+
+    // A load address typed after the name overrides the one on the disk.
+    type_text(&mut atom, "*LOAD BIGFILE 4000\n");
+    run_seconds(&mut atom, 5);
+    assert_eq!(memory_at(&atom, 0x4000, data.len()), data);
+}
