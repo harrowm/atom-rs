@@ -180,9 +180,8 @@ impl AtomApp {
     fn start_audio(&mut self) {
         match AudioOutput::new() {
             Ok(audio) => {
-                let sound = &mut self.atom.bus.sound;
-                sound.set_sample_rate(CLOCK_HZ, audio.sample_rate() as f64);
-                sound.enabled = true;
+                self.atom.bus.set_audio_sample_rate(audio.sample_rate());
+                self.atom.bus.sound.enabled = true;
                 self.audio = Some(audio);
             }
             Err(message) => self.notice = Some(format!("No sound: {message}")),
@@ -876,6 +875,10 @@ impl AtomApp {
                     ui.label("No audio device available");
                 }
                 ui.checkbox(&mut self.muted, "Mute");
+                ui.checkbox(
+                    &mut self.atom.bus.memory.sid_fitted,
+                    "SID sound card (at BDC0)",
+                );
                 ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.0).text("volume"));
                 ui.label("Sound plays at normal speed or slower.");
             });

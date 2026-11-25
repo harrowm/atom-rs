@@ -176,7 +176,7 @@ A few notes:
   is one file or a folder works with `./scripts/make_game.sh AF/PANIC panic`
   (a path under `ASA/`, then a disk name). For a folder the loader is usually
   called `RUNME` or `LOADER`. Some games may need hardware the emulator does not
-  have yet (SID sound, the SD card itself); the Hardware debug window's
+  have yet (a joystick, say); the Hardware debug window's
   *Unmapped memory* log shows what a game reaches for.
 
 ### Starting a program from the command line
@@ -298,6 +298,25 @@ The speaker is a single bit, sampled every CPU cycle and averaged down to your
 sound card's rate. Sound plays at normal speed and slower; above about 1x it
 is muted rather than squealing.
 
+**SID music.** A SID sound card (the Commodore 64's sound chip, which several
+add-on cards put in the Atom) is emulated at `BDC0-BDDF`, clocked at the Atom's
+1 MHz, and mixed in with the speaker. The chip itself is the
+[`sidera`](https://crates.io/crates/sidera) crate; the rest (the memory map,
+the clock, the mixing) is in `src/machine/sid.rs`. The archive's `SID` folder
+has tunes with a player, which you can try with the archive and SD card mode:
+
+```sh
+cargo run --release -- --archive --run '*CWD ASA/SID/ATMSID1\n*RUN SIDMENU\n'
+```
+
+then press **A** or **Z** to choose a tune and **Space** to play it. There is a
+**Sound > SID sound card** switch in the menu. When a tune plays it costs about
+half the emulator's speed; when nothing uses the SID it costs nothing. Things to
+know: a saved state does not include the SID (it restarts silent), and the chip
+is stepped once per audio sample, so a register write takes effect up to about
+22 microseconds late, which tunes cannot hear but sample playback through the
+volume register would lose a little detail through.
+
 ### The debugger
 
 Each tool is a separate window, opened from the **Debug** menu.
@@ -393,7 +412,7 @@ Dependencies point one way: `ui` uses `machine`, which uses `cpu`.
 
 The memory map, character font and video behaviour follow Tom Walker's
 Atomulator. CPU tests are by Tom Harte and others (SingleStepTests), Klaus
-Dormann, and Bruce Clark.
+Dormann, and Bruce Clark. The SID chip is the `sidera` crate (MIT).
 
 ## Licence
 

@@ -61,6 +61,7 @@ pub enum Region {
     VideoRam,
     Fdc,
     AtoMmc,
+    Sid,
     Ppi,
     Via,
     Rom(RomSlot),
@@ -136,6 +137,9 @@ pub struct Memory {
     layout: RamLayout,
     /// Is the disk interface fitted? (True once a disk ROM is loaded.)
     pub disk_interface_fitted: bool,
+    /// Is a SID sound card fitted (at `BDC0-BDDF`)? Atomulator has one by
+    /// default, so it is here too; programs that do not use it never notice.
+    pub sid_fitted: bool,
 }
 
 impl Memory {
@@ -145,6 +149,7 @@ impl Memory {
             roms: Default::default(),
             layout,
             disk_interface_fitted: false,
+            sid_fitted: true,
         }
     }
 
@@ -171,6 +176,7 @@ impl Memory {
             0xB000..=0xB3FF => Region::Ppi,
             0xB400..=0xB7FF => Region::AtoMmc,
             0xB800..=0xBBFF => Region::Via,
+            0xBDC0..=0xBDDF if self.sid_fitted => Region::Sid,
             0xC000..=0xCFFF => Region::Rom(RomSlot::Basic),
             0xD000..=0xDFFF => Region::Rom(RomSlot::FloatingPoint),
             0xE000..=0xEFFF => Region::Rom(RomSlot::Disk),

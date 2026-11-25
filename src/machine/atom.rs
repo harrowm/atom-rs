@@ -13,6 +13,7 @@ use super::debug::{Debugger, StopReason};
 use super::fdc8271::Fdc8271;
 use super::memory::{Memory, ROM_SIZE, RamLayout, Region, RomSlot, open_bus};
 use super::ppi8255::Ppi;
+use super::sid::SidCard;
 use super::sound::Sampler;
 use super::tape::Tape;
 use super::vdg6847::{Standard, VISIBLE_LINES, Vdg, VideoMode};
@@ -46,6 +47,8 @@ pub struct AtomBus {
     pub cycles: u64,
     /// Speaker output, turned into audio samples.
     pub sound: Sampler,
+    /// The SID sound card, mixed in with the speaker.
+    pub sid: SidCard,
     /// The cassette player.
     pub tape: Tape,
     /// The disk controller (reachable once a disk ROM is loaded).
@@ -71,6 +74,7 @@ impl AtomBus {
             framebuffer: Framebuffer::new(),
             cycles: 0,
             sound: Sampler::new(CLOCK_HZ, 44_100.0),
+            sid: SidCard::new(44_100),
             tape: Tape::new(),
             fdc: Fdc8271::new(),
             atommc: AtoMmc::default(),
@@ -90,7 +94,10 @@ impl AtomBus {
             self.ppi.tape_input = self.tape.step();
             self.tape.record(self.ppi.tape_output());
         }
-        self.sound.tick(self.ppi.speaker());
+        if self.sound.tick(self.ppi.speaker()) && self.memory.sid_fitted {
+            let sid_level = self.sid.next_sample();
+            self.sound.add_to_last_sample(sid_level);
+        }
         self.fdc.tick();
         // The controller's NMI output is level-sensitive, the CPU's input is
         // edge-sensitive: remember each time it goes active.
@@ -132,8 +139,15 @@ impl AtomBus {
         self.via = Via::new();
         self.fdc.reset();
         self.atommc.reset();
+        self.sid.reset();
         self.nmi_edge = false;
         self.fdc_nmi_was_asserted = false;
+    }
+
+    /// Tell the speaker and SID what rate the sound card runs at.
+    pub fn set_audio_sample_rate(&mut self, sample_rate: u32) {
+        self.sound.set_sample_rate(CLOCK_HZ, f64::from(sample_rate));
+        self.sid.set_sample_rate(sample_rate);
     }
 
     /// Read without side effects or clock ticks, for the debugger.
@@ -141,6 +155,7 @@ impl AtomBus {
         match self.memory.region(addr) {
             Region::Ram | Region::VideoRam => self.memory.ram[addr as usize],
             Region::Rom(slot) => self.memory.read_rom(slot, addr),
+            Region::Sid => self.sid.read(addr),
             Region::Ppi | Region::Via | Region::Fdc | Region::AtoMmc | Region::Unmapped => {
                 open_bus(addr)
             }
@@ -161,6 +176,7 @@ impl Bus for AtomBus {
             Region::Via => self.via.read(addr),
             Region::Fdc => self.fdc.read(addr),
             Region::AtoMmc => self.atommc.read(addr),
+            Region::Sid => self.sid.read(addr),
             Region::Unmapped => {
                 if self.debug.log_unmapped {
                     self.debug.note_unmapped(addr, false);
@@ -181,6 +197,7 @@ impl Bus for AtomBus {
             Region::Via => self.via.write(addr, value),
             Region::Fdc => self.fdc.write(addr, value),
             Region::AtoMmc => self.atommc.write(addr, value),
+            Region::Sid => self.sid.write(addr, value),
             Region::Rom(_) => {} // writes to ROM go nowhere
             Region::Unmapped => {
                 if self.debug.log_unmapped {

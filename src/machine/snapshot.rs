@@ -92,6 +92,8 @@ impl Atom {
         bus.vdg = snapshot.vdg;
         bus.fdc = snapshot.fdc;
         bus.tape = snapshot.tape;
+        // The SID chip's state is not saved: it starts silent.
+        bus.sid.reset();
         bus.cycles = snapshot.cycles;
         bus.external_irq = snapshot.external_irq;
         bus.nmi_edge = snapshot.nmi_edge;

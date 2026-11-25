@@ -292,3 +292,49 @@ fn asteroids_has_asteroids() {
         lit_pixels(&atom)
     );
 }
+
+/// The archive's `SID` folder holds tunes for SID sound cards, with a player
+/// menu. Play one: the menu is silent, and once SPACE starts a tune the SID
+/// (at `BDC0`) makes sound.
+#[test]
+fn a_sid_tune_from_the_archive_plays() {
+    if !Path::new(ARCHIVE).join("ASA/SID/ATMSID1/SIDMENU").exists()
+        || !Path::new("roms/ramrom.rom").exists()
+    {
+        common::skipped("needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
+        return;
+    }
+    let mut atom = Atom::new();
+    atom.use_sd_card(Path::new("roms"), ARCHIVE.into())
+        .expect("AtoMMC ROMs load");
+    atom.bus.set_audio_sample_rate(44_100);
+    atom.bus.sound.enabled = true;
+    for _ in 0..120 {
+        atom.run_frame();
+    }
+
+    let mut typist = Typist::new();
+    typist.type_text("*CWD ASA/SID/ATMSID1\n*RUN SIDMENU\n", 0);
+    assert!(
+        run_until(&mut atom, &mut typist, 3000, |a| screen_has(a, "SPC=PLAY")),
+        "the SID player menu never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+    // The menu itself makes no sound.
+    run_until(&mut atom, &mut typist, 100, |_| false);
+    let quiet = ac_level(&atom.bus.sound.take_samples());
+    assert!(quiet < 0.001, "the menu should be silent, level {quiet}");
+
+    // Play the first tune for a few seconds.
+    hold_key(&mut atom, "SPACE", 10);
+    run_until(&mut atom, &mut typist, 150, |_| false);
+    let playing = ac_level(&atom.bus.sound.take_samples());
+    assert!(playing > 0.01, "the tune made no sound, level {playing}");
+}
+
+/// How loud a stretch of audio is: the RMS once its steady level is removed.
+fn ac_level(samples: &[f32]) -> f32 {
+    let mean = samples.iter().sum::<f32>() / samples.len().max(1) as f32;
+    let power = samples.iter().map(|s| (s - mean) * (s - mean)).sum::<f32>();
+    (power / samples.len().max(1) as f32).sqrt()
+}

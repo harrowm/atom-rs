@@ -100,7 +100,8 @@ Based on Atomulator. I'll read its source (`atom.c`, `6502.c`, `via.c`, `8255.c`
 | `B000–B3FF` | 8255 PPI (decoded on `addr & 3`) |
 | `B400–B7FF` | AtoMMC (not yet emulated) |
 | `B800–BBFF` | 6522 VIA (decoded on `addr & 15`) |
-| `BC00–BFFF` | SID / RAMROM / GDOS (not yet emulated) |
+| `BDC0–BDDF` | SID sound card (`machine/sid.rs`) |
+| rest of `BC00–BFFF` | RAMROM / GDOS (not yet emulated) |
 | `C000–CFFF` | BASIC ROM |
 | `D000–DFFF` | Floating point ROM |
 | `E000–EFFF` | Disk ROM socket |
@@ -167,4 +168,7 @@ Repton's Z, X, ; and . did nothing. The Retro Software ports read the joystick t
 
 ### One-command archive
 `atom-rs --archive` (`src/archive.rs`) asks GitHub's releases API for the newest release of hoglet67/AtomSoftwareArchive (not `/latest`, which skips pre-releases, and every recent release is one), picks its plain zip (the shortest name; the others are variants for other hardware), and downloads and unpacks it into `~/.cache/atom-rs/archive/files` only if the recorded tag differs. It unpacks beside the old copy and swaps it in, so a failed download leaves the old copy working; zip names that would escape the folder are skipped; offline it falls back to the copy it has. The folder then becomes the SD card and `*MENU` is typed unless `--run` says otherwise. Dependencies added: `ureq` (HTTP) and `zip` (deflate only). Checked against the real V14BETA2 release: fresh download, up-to-date check, and offline fallback; its menu launches a game in the emulator. Not done: a File-menu "update archive" item, and picking the variant zips.
+
+### SID sound card
+`machine/sid.rs` maps a SID at `BDC0-BDDF` (as in Atomulator) and wraps the `sidera` crate. Chosen over the alternatives on licence and clock: `resid-rs` is GPL-3.0+, which cannot be linked into this GPL-2.0-only project; `mos6581` (MIT/Apache, new) only offers the C64's 985 kHz and 1.023 MHz clocks, while `sidera` (MIT) takes any clock, and the Atom's SID runs at 1 MHz, so the pitch is exact (tests measure 220/440/880 Hz to within 1.5 Hz). The chip is stepped once per audio sample from the sampler (`Sampler::tick` says when a sample is finished and the SID's is added to it), not per CPU cycle, and not at all while the master volume is zero (that kept the idle cost to nothing: 142x vs 143x without the card, against 71x if always stepped). A change of audio sample rate rebuilds the chip and replays the written registers. Tests: unit tests for pitch, release, reset and OSC3; a 6502 program playing a note through the bus; and a real tune from the archive's `SID` folder through its own player menu (silent in the menu, sounding when played; fails without the card). The player's own register writes (2,733 in 8 s) decode to a bass line and percussion. Not done: saving the SID in states; cycle-exact register timing (digitised sample playback); the 8580 model option; the card's other address variants.
 

@@ -97,7 +97,9 @@ fn region_colour(region: Region) -> Color32 {
         Region::Ram => Color32::LIGHT_GRAY,
         Region::VideoRam => Color32::LIGHT_GREEN,
         Region::Rom(_) => Color32::from_rgb(140, 170, 220),
-        Region::Ppi | Region::Via | Region::Fdc | Region::AtoMmc => Color32::from_rgb(240, 200, 90),
+        Region::Ppi | Region::Via | Region::Fdc | Region::AtoMmc | Region::Sid => {
+            Color32::from_rgb(240, 200, 90)
+        }
         Region::Unmapped => Color32::DARK_GRAY,
     }
 }

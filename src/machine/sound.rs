@@ -37,23 +37,25 @@ impl Sampler {
         self.cycles_per_sample = clock_hz / sample_rate;
     }
 
-    /// Call once per CPU cycle with the current speaker level.
+    /// Call once per CPU cycle with the current speaker level. Returns true
+    /// when this cycle completed an output sample (so that something else can
+    /// be mixed into it with [`Sampler::add_to_last_sample`]).
     ///
     /// Each output sample is the exact average of the speaker level over its
     /// period. A period is rarely a whole number of cycles (1 MHz / 44.1 kHz
     /// is 22.68), so the cycle that crosses a boundary is split between the
     /// two samples it touches. Getting this wrong makes a speaker that is
     /// perfectly still sound like a faint tone.
-    pub fn tick(&mut self, speaker_high: bool) {
+    pub fn tick(&mut self, speaker_high: bool) -> bool {
         if !self.enabled {
-            return;
+            return false;
         }
         let level = if speaker_high { 1.0 } else { 0.0 };
         let time_left = self.cycles_per_sample - self.elapsed;
         if time_left > 1.0 {
             self.elapsed += 1.0;
             self.high += level;
-            return;
+            return false;
         }
         // This cycle finishes the sample: the first `time_left` of it belongs
         // to this sample, the rest to the next.
@@ -65,6 +67,14 @@ impl Sampler {
         self.high = level * carried;
         if self.samples.len() > MAX_BUFFERED_SAMPLES {
             self.samples.drain(..MAX_BUFFERED_SAMPLES / 2);
+        }
+        true
+    }
+
+    /// Add another sound source (the SID) to the sample just finished.
+    pub fn add_to_last_sample(&mut self, level: f32) {
+        if let Some(last) = self.samples.last_mut() {
+            *last += level;
         }
     }
 
@@ -98,6 +108,16 @@ mod tests {
         }
         let samples = sampler.take_samples();
         assert!((samples[0] - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn tick_says_when_a_sample_is_finished_and_more_can_be_added_to_it() {
+        let mut sampler = Sampler::new(1_000_000.0, 100_000.0); // 10 cycles per sample
+        sampler.enabled = true;
+        let finished: Vec<bool> = (0..20).map(|_| sampler.tick(false)).collect();
+        assert_eq!(finished.iter().filter(|&&done| done).count(), 2);
+        sampler.add_to_last_sample(0.25);
+        assert_eq!(sampler.take_samples(), vec![0.0, 0.25]);
     }
 
     #[test]

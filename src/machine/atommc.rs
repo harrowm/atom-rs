@@ -4,7 +4,7 @@
 //! AtoMMC is a modern add-on. A small microcontroller on it reads an SD card
 //! and talks to the Atom through a few registers at `B400`. The Atom's AtoMMC
 //! ROM (which replaces the Atom DOS ROM) provides commands such as `*CAT`,
-//! `*LOAD`, `*SAVE`, `*DIR` and `*MENU` on top of them. The Atom Software
+//! `*LOAD`, `*SAVE`, `*CWD` and `*MENU` on top of them. The Atom Software
 //! Archive is laid out as the contents of such a card.
 //!
 //! ## The registers

@@ -14,6 +14,7 @@ pub mod font;
 pub mod keyboard;
 pub mod memory;
 pub mod ppi8255;
+pub mod sid;
 pub mod snapshot;
 pub mod sound;
 pub mod tape;
