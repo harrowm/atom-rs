@@ -11,6 +11,7 @@ use super::atm::AtmFile;
 use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
 use super::fdc8271::Fdc8271;
+use super::joystick::Joystick;
 use super::memory::{Memory, ROM_SIZE, RamLayout, Region, RomSlot, open_bus};
 use super::ppi8255::Ppi;
 use super::sid::SidCard;
@@ -267,6 +268,14 @@ impl Atom {
         Ok(())
     }
 
+    /// Plug in a joystick (or `None` to unplug it). It is seen through both
+    /// the AtoMMC's port and the keyboard matrix. With none plugged in the
+    /// AtoMMC port answers 0, which software reads as "no joystick".
+    pub fn set_joystick(&mut self, stick: Option<Joystick>) {
+        self.bus.ppi.keyboard.joystick = stick;
+        self.bus.atommc.joystick = stick.map(Joystick::port_bits);
+    }
+
     /// Turn this into an Atom with an AtoMMC SD card interface, using the
     /// folder `card_folder` as the card.
     ///
@@ -435,6 +444,43 @@ mod tests {
         atom.bus.read(0x0000);
         assert_eq!(atom.bus.cycles, 2);
         assert_eq!(atom.bus.vdg.line(), 0);
+    }
+
+    #[test]
+    fn a_joystick_is_seen_through_the_atommc_port() {
+        let mut atom = Atom::new();
+        // No stick plugged in: software reads 0, "no joystick".
+        atom.bus.write(0xB400, 0xA2);
+        assert_eq!(atom.bus.read(0xB401), 0);
+
+        atom.set_joystick(Some(Joystick::default()));
+        atom.bus.write(0xB400, 0xA2);
+        assert_eq!(atom.bus.read(0xB401), 0xFF, "a stick at rest");
+
+        atom.set_joystick(Some(Joystick {
+            left: true,
+            fire: true,
+            ..Joystick::default()
+        }));
+        atom.bus.write(0xB400, 0xA2);
+        assert_eq!(atom.bus.read(0xB401), 0b1110_1101);
+
+        atom.set_joystick(None);
+        atom.bus.write(0xB400, 0xA2);
+        assert_eq!(atom.bus.read(0xB401), 0, "unplugged again");
+    }
+
+    #[test]
+    fn a_joystick_is_seen_on_keyboard_row_zero_and_only_there() {
+        let mut atom = Atom::new();
+        atom.set_joystick(Some(Joystick {
+            up: true,
+            ..Joystick::default()
+        }));
+        atom.bus.write(0xB000, 0x00); // select row 0
+        assert_eq!(atom.bus.read(0xB001) & 0x3F, 0b10_1111, "Q's bit is low");
+        atom.bus.write(0xB000, 0x01); // another row
+        assert_eq!(atom.bus.read(0xB001) & 0x3F, 0x3F, "nothing pressed there");
     }
 
     #[test]

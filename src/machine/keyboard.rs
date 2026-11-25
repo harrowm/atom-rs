@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::joystick::Joystick;
+
 /// Number of rows in the matrix.
 pub const ROWS: usize = 10;
 /// Number of columns in the matrix.
@@ -18,6 +20,10 @@ pub struct Keyboard {
     pub shift: bool,
     pub ctrl: bool,
     pub rept: bool,
+    /// A joystick on the matrix interface (row 0), if one is in use. Like the
+    /// keys, the front end sets it afresh each frame.
+    #[serde(default)]
+    pub joystick: Option<Joystick>,
 }
 
 impl Keyboard {
@@ -46,7 +52,10 @@ impl Keyboard {
         let mut value = !row_bits & 0x3F;
         value |= if self.ctrl { 0 } else { 0x40 };
         value |= if self.shift { 0 } else { 0x80 };
-        value
+        match self.joystick {
+            Some(stick) if row == 0 => stick.apply_to_row_zero(value),
+            _ => value,
+        }
     }
 }
 

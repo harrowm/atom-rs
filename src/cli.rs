@@ -15,6 +15,7 @@ Options:
   --archive        fetch the latest Atom Software Archive (the first time, and
                    whenever a newer one is published), use it as the SD card
                    and start its menu. Needs roms/ramrom.rom
+  --joystick       start with the joystick on (arrow keys, and Space to fire)
   --tape FILE      insert a tape (.uef). It plays by itself when the Atom
                    says PLAY TAPE
   --state FILE     start from a saved state (.atomstate)
@@ -42,6 +43,8 @@ pub struct Options {
     pub sdcard: Option<PathBuf>,
     /// Fetch the Atom Software Archive and use it as the SD card.
     pub archive: bool,
+    /// Start with the keyboard acting as a joystick.
+    pub joystick: bool,
     pub tape: Option<PathBuf>,
     pub state: Option<PathBuf>,
     /// Text to type after start-up, with `\n` already turned into newlines.
@@ -74,6 +77,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, String>
             "--disk" => options.disks[0] = Some(value("--disk")?.into()),
             "--disk1" => options.disks[1] = Some(value("--disk1")?.into()),
             "--archive" => options.archive = true,
+            "--joystick" => options.joystick = true,
             "--sdcard" => options.sdcard = Some(value("--sdcard")?.into()),
             "--tape" => options.tape = Some(value("--tape")?.into()),
             "--state" => options.state = Some(value("--state")?.into()),
@@ -138,6 +142,7 @@ mod tests {
             "--debug",
             "--fast-tape",
             "--archive",
+            "--joystick",
             "--disk",
             "a.ssd",
             "--disk1",
@@ -152,7 +157,7 @@ mod tests {
             "*CAT\\n",
             "my/roms",
         ]);
-        assert!(o.debug && o.fast_tape && o.archive);
+        assert!(o.debug && o.fast_tape && o.archive && o.joystick);
         assert_eq!(o.disks, [Some("a.ssd".into()), Some("b.dsd".into())]);
         assert_eq!(o.sdcard, Some("card".into()));
         assert_eq!(o.tape, Some("t.uef".into()));

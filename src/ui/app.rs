@@ -15,6 +15,7 @@ use atom_rs::machine::atm::AtmFile;
 use atom_rs::machine::autoplay::TapeAutoplay;
 use atom_rs::machine::debug::StopReason;
 use atom_rs::machine::disk::DiskImage;
+use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
 use atom_rs::machine::memory::RomSlot;
 use atom_rs::machine::tape::TapeImage;
@@ -71,6 +72,8 @@ pub struct AtomApp {
     loaded_exec: Option<u16>,
     /// Which host keys press which Atom keys, and the window that edits it.
     keymap: KeyMap,
+    /// Do the arrow keys and Space act as a joystick (Input menu)?
+    joystick_keys: bool,
     keyboard_window: KeyboardWindow,
     /// Types commands for us (from `--run`, or the tape auto-play).
     typist: Typist,
@@ -112,6 +115,7 @@ impl AtomApp {
             disk_paths: [None, None],
             quick_state: None,
             keymap: KeyMap::default(),
+            joystick_keys: false,
             keyboard_window: KeyboardWindow::default(),
             typist: Typist::new(),
             autoplay_tape: false,
@@ -146,6 +150,7 @@ impl AtomApp {
         if self.rom_error.is_some() {
             return;
         }
+        self.joystick_keys = options.joystick;
         if let Some(folder) = &options.sdcard {
             self.use_sd_card(folder.clone());
         }
@@ -268,7 +273,11 @@ impl AtomApp {
         keyboard.release_all();
         let mut atom_shift = modifiers.shift;
         let (mut atom_ctrl, mut atom_rept) = (modifiers.ctrl, modifiers.alt);
+        let mut stick = Joystick::default();
         for host_key in keys_down {
+            if self.joystick_keys && press_joystick_key(&mut stick, host_key) {
+                continue; // the arrow keys steer instead of typing
+            }
             match self.keymap.target_for(host_key) {
                 Some(Target::Key { name, shift }) => {
                     let (row, column) = find_key(name).expect("key maps only name real keys");
@@ -286,6 +295,7 @@ impl AtomApp {
         keyboard.rept = atom_rept;
         // The typist adds its own key presses on top of the real keyboard's.
         self.typist.update(keyboard, frame, ready);
+        self.atom.set_joystick(self.joystick_keys.then_some(stick));
 
         // F12 is the BREAK key, which resets the machine.
         if break_pressed {
@@ -882,12 +892,17 @@ impl AtomApp {
                 ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.0).text("volume"));
                 ui.label("Sound plays at normal speed or slower.");
             });
-            ui.menu_button("View", |ui| {
-                ui.checkbox(&mut self.integer_scaling, "Integer scaling");
+            ui.menu_button("Input", |ui| {
+                ui.checkbox(&mut self.joystick_keys, "Joystick on the keyboard");
+                ui.label("Arrow keys steer, Space fires.");
+                ui.separator();
                 if ui.button("Keyboard mapping...").clicked() {
                     self.keyboard_window.open = true;
                     ui.close();
                 }
+            });
+            ui.menu_button("View", |ui| {
+                ui.checkbox(&mut self.integer_scaling, "Integer scaling");
             });
             ui.menu_button("Debug", |ui| {
                 let windows = &mut self.debug_windows;
@@ -1026,5 +1041,52 @@ impl eframe::App for AtomApp {
         for command in commands {
             self.execute(command);
         }
+    }
+}
+
+/// With the joystick switched on, the arrow keys steer it and Space is fire.
+/// Returns true if the key was used up (the arrows), so it does not also type
+/// the Atom's cursor keys. Space is fire and still types a space, so menus
+/// that wait for it keep working.
+fn press_joystick_key(stick: &mut Joystick, key: Key) -> bool {
+    match key {
+        Key::ArrowLeft => stick.left = true,
+        Key::ArrowRight => stick.right = true,
+        Key::ArrowUp => stick.up = true,
+        Key::ArrowDown => stick.down = true,
+        Key::Space => {
+            stick.fire = true;
+            return false;
+        }
+        _ => return false,
+    }
+    true
+}
+
+#[cfg(test)]
+mod joystick_key_tests {
+    use super::*;
+
+    #[test]
+    fn arrows_steer_and_are_used_up() {
+        let mut stick = Joystick::default();
+        for key in [Key::ArrowLeft, Key::ArrowUp] {
+            assert!(press_joystick_key(&mut stick, key));
+        }
+        assert!(stick.left && stick.up && !stick.right && !stick.down && !stick.fire);
+    }
+
+    #[test]
+    fn space_fires_but_still_types() {
+        let mut stick = Joystick::default();
+        assert!(!press_joystick_key(&mut stick, Key::Space));
+        assert!(stick.fire);
+    }
+
+    #[test]
+    fn other_keys_are_left_alone() {
+        let mut stick = Joystick::default();
+        assert!(!press_joystick_key(&mut stick, Key::A));
+        assert_eq!(stick, Joystick::default());
     }
 }

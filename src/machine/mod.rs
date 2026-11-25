@@ -11,6 +11,7 @@ pub mod debug;
 pub mod disk;
 pub mod fdc8271;
 pub mod font;
+pub mod joystick;
 pub mod keyboard;
 pub mod memory;
 pub mod ppi8255;

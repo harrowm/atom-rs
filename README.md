@@ -217,18 +217,36 @@ wherever you start the program.
 
 | Key | Action |
 |-----|--------|
-| letters, digits, punctuation | the Atom key in the same position (US layout); change in *View > Keyboard mapping* |
+| letters, digits, punctuation | the Atom key in the same position (US layout); change in *Input > Keyboard mapping* |
 | Shift, Ctrl | Shift, Ctrl |
 | Alt | REPT |
 | Enter, Backspace | RETURN, DELETE |
-| Arrow keys | cursor keys (Down and Left are Shift+Up and Shift+Right, as on the Atom) |
+| Arrow keys | cursor keys (Down and Left are Shift+Up and Shift+Right, as on the Atom), or the joystick if *Input > Joystick* is on |
 | End, Tab | COPY, `^` |
 | F12 | BREAK (reset) |
 | F6, F7 | quick save / quick load of the whole machine |
 
+### Joystick
+
+The Atom has no joystick port of its own, so games used add-ons. Two are
+emulated, as in Atomulator, so software written for either works: the
+**AtoMMC card's port** (Repton reads its joystick this way) and a stick wired
+into the **keyboard matrix** (it looks like the keys 3, minus, G and Q, plus a
+fire line, on keyboard row 0).
+
+Turn it on with **Input > Joystick on the keyboard** (or start with
+`--joystick`): the **arrow keys** then steer and **Space** fires. While it is
+on the arrow keys no longer type the Atom's cursor keys, and Space still types a
+space as well, so menus that wait for it keep working. Both interfaces are fed
+at once. A gamepad is not supported yet.
+
+With the joystick off, the AtoMMC port reports "no joystick" (0). Checked with
+Repton: a stick at rest leaves it alone and each direction does exactly what
+Repton's own key for that direction does.
+
 ### Changing the keys
 
-**View > Keyboard mapping...** opens a window listing the Atom keys and the
+**Input > Keyboard mapping...** opens a window listing the Atom keys and the
 keys on your keyboard that press them, in three folding sections: *Symbols and
 special keys* (open), then *Letters* and *Numbers* (folded away, since few
 people rebind those; typing in the filter box opens any section with a match). Click **Set** next to an Atom key, then

@@ -125,23 +125,18 @@ fn hold_key(atom: &mut Atom, name: &str, frames: u32) {
     atom.bus.ppi.keyboard.release_all();
 }
 
-/// Repton reads its joystick through the AtoMMC interface (command A2 at
-/// B400, answer at B401) and ignores the keyboard for any direction the
-/// joystick seems to be pressing. With no AtoMMC the answer was open bus,
-/// which read as right, left and up all held, so Z, X, ; and . did nothing.
-#[test]
-fn repton_responds_to_the_direction_keys() {
+/// Repton, started and taken to the game itself (menu, title and high scores
+/// passed with Space), as a saved state. `None` without the disk or ROMs.
+fn repton_in_game() -> Option<Vec<u8>> {
     if !Path::new(REPTON_DISK).exists() {
         common::skipped(format!(
             "{REPTON_DISK} not found (./scripts/make_game.sh RS/REPTON repton)"
         ));
-        return;
+        return None;
     }
-    let Some(mut atom) = booted_atom(0) else {
-        return;
-    };
+    let mut atom = booted_atom(0)?;
     if !atom.bus.memory.disk_interface_fitted {
-        return;
+        return None;
     }
     atom.bus.fdc.drives[0] =
         Some(DiskImage::from_bytes(std::fs::read(REPTON_DISK).unwrap(), 1).unwrap());
@@ -159,8 +154,23 @@ fn repton_responds_to_the_direction_keys() {
             atom.run_frame();
         }
     }
+    Some(atom.save_state().unwrap())
+}
 
-    let state = atom.save_state().unwrap();
+/// How many pixels differ between two pictures.
+fn pixels_changed(a: &[u8], b: &[u8]) -> usize {
+    a.iter().zip(b).filter(|(a, b)| a != b).count()
+}
+
+/// Repton reads its joystick through the AtoMMC interface (command A2 at
+/// B400, answer at B401) and ignores the keyboard for any direction the
+/// joystick seems to be pressing. With no AtoMMC the answer was open bus,
+/// which read as right, left and up all held, so Z, X, ; and . did nothing.
+#[test]
+fn repton_responds_to_the_direction_keys() {
+    let Some(state) = repton_in_game() else {
+        return;
+    };
     let picture_after = |key: Option<&str>| -> Vec<u8> {
         let mut copy = booted_atom(0).unwrap();
         copy.load_state(&state).unwrap();
@@ -174,11 +184,61 @@ fn repton_responds_to_the_direction_keys() {
     };
     let idle = picture_after(None);
     for key in ["Z", "X", ";", "."] {
-        let moved = picture_after(Some(key));
-        let changed = moved.iter().zip(&idle).filter(|(a, b)| a != b).count();
+        let moved = pixels_changed(&picture_after(Some(key)), &idle);
         assert!(
-            changed > 500,
-            "holding {key} should move Repton, but only {changed} pixels changed"
+            moved > 500,
+            "holding {key} should move Repton, but only {moved} pixels changed"
+        );
+    }
+}
+
+/// The same game steered by a joystick on the AtoMMC port instead. A stick at
+/// rest must leave Repton alone (that it reads FF, not 0, is part of what is
+/// tested), and each direction must do exactly what Repton's own key for that
+/// direction does: which also shows the bits are the right way round.
+#[test]
+fn repton_responds_to_a_joystick() {
+    use atom_rs::machine::joystick::Joystick;
+
+    let Some(state) = repton_in_game() else {
+        return;
+    };
+    let after = |stick: Option<Joystick>, key: Option<&str>| -> Vec<u8> {
+        let mut copy = booted_atom(0).unwrap();
+        copy.load_state(&state).unwrap();
+        copy.set_joystick(stick);
+        if let Some(key) = key {
+            let (row, column) = atom_rs::machine::keyboard::find_key(key).unwrap();
+            copy.bus.ppi.keyboard.set_key(row, column, true);
+        }
+        for _ in 0..60 {
+            copy.run_frame();
+        }
+        copy.bus.framebuffer.pixels.clone()
+    };
+    let at_rest = after(Some(Joystick::default()), None);
+    let stick = |f: fn(&mut Joystick)| {
+        let mut stick = Joystick::default();
+        f(&mut stick);
+        Some(stick)
+    };
+    // (direction, the joystick, Repton's key for the same direction)
+    let directions = [
+        ("left", stick(|s| s.left = true), "Z"),
+        ("right", stick(|s| s.right = true), "X"),
+        ("up", stick(|s| s.up = true), ";"),
+        ("down", stick(|s| s.down = true), "."),
+    ];
+    for (name, joystick, key) in directions {
+        let moved = pixels_changed(&after(joystick, None), &at_rest);
+        assert!(
+            moved > 500,
+            "pushing the joystick {name} should move Repton, but only {moved} pixels changed"
+        );
+        let differs_from_key = pixels_changed(&after(joystick, None), &after(None, Some(key)));
+        assert!(
+            differs_from_key < 100,
+            "joystick {name} should do what the {key} key does, but the pictures differ by {differs_from_key} pixels"
         );
     }
 }
