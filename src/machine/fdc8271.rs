@@ -158,7 +158,9 @@ impl Fdc8271 {
         }
     }
 
-    fn reset(&mut self) {
+    /// The RESET line (also reached by writing the reset register): stops any
+    /// command. The disks stay in the drives.
+    pub fn reset(&mut self) {
         let drives = std::mem::take(&mut self.drives);
         *self = Fdc8271::new();
         self.drives = drives;

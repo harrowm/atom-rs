@@ -43,6 +43,13 @@ impl Ppi {
         false
     }
 
+    /// The RESET line: both output ports go back to zero (speaker off, colour
+    /// set 0, text mode). The keyboard keeps whatever is pressed on it.
+    pub fn reset(&mut self) {
+        self.port_a = 0;
+        self.port_c_out = 0;
+    }
+
     pub fn read(&self, addr: u16) -> u8 {
         match addr & 3 {
             0 => self.port_a,

@@ -152,3 +152,6 @@ Based on Atomulator. I'll read its source (`atom.c`, `6502.c`, `via.c`, `8255.c`
 
 ### Chuckie Egg fixes
 Chuckie Egg showed a score of 555555, a high-score table of `dddddddd` and a man who died at once. Cause: no RAM at `0400-09FF` and `0B00-1FFF`, where the game keeps its tables. The default layout is now `RamLayout::expanded()` (about 31K, with the disk controller's page at `0A00` left free). Found with a new debugger feature: a log of accesses to unmapped memory (`Debugger::log_unmapped`, shown in the Hardware window). `tests/software.rs` fails if the game ever touches unmapped memory below `B000`.
+
+### Sound fixes
+A speaker held still sounded like a faint whine and pausing thumped. Causes: (1) the sampler carried the fractional part of a sample period (22.68 cycles at 44.1 kHz) wrongly, so a still speaker gave a beat pattern instead of a flat line; it is now an exact box average (`machine/sound.rs`, with a test). (2) Reset only reset the CPU, so a program's speaker, timer and disk-controller state survived it; `Atom::reset` now resets the 8255, 6522 and 8271 like the real RESET line. (3) The audio output jumped between a steady level and silence; it now has a DC blocker, a fade in and out, and re-primes after a gap (`ui/audio.rs`). Samples made while paused or single-stepping are discarded. I could not listen to the result, only check the numbers.

@@ -102,6 +102,12 @@ played properly.)
 | Repton (Retro Software port) | `RS/REPTON` (a folder) | `'*RUN LOADER\n'` |
 | Jet Set Willy (Retro Software port) | `RS/JSW` (a folder) | `'LOAD "JSWRUN"\nRUN\n'` |
 
+**Galaxians** shows an instructions screen with no prompt. Press **A** to
+start a one-player game (**B** for two). Then **Caps Lock** moves left,
+**Shift** moves right and **Alt/Option** (the Atom's REPT key) fires. On a Mac
+Caps Lock behaves as a toggle, so if it feels wrong, the Atom's `LOCK` key is
+the one at the left end of its middle row.
+
 (Names are at most 7 characters on a disk, so longer ones are cut: `GALAXIAN`
 becomes `GALAXIA`.) A BASIC program is started with BASIC's own `LOAD` and `RUN`;
 `*RUN` is for machine code, and for BASIC programs that start themselves.

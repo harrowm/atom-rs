@@ -13,8 +13,11 @@ pub struct Sampler {
     /// Off by default so that headless runs and tests pay nothing.
     pub enabled: bool,
     cycles_per_sample: f64,
-    elapsed_cycles: f64,
-    high_cycles: f64,
+    /// How much of the current sample period has passed, in cycles (a
+    /// fraction, because a sample is rarely a whole number of cycles).
+    elapsed: f64,
+    /// Cycles the speaker was high during that time (also fractional).
+    high: f64,
     samples: Vec<f32>,
 }
 
@@ -24,8 +27,8 @@ impl Sampler {
         Sampler {
             enabled: false,
             cycles_per_sample: clock_hz / sample_rate,
-            elapsed_cycles: 0.0,
-            high_cycles: 0.0,
+            elapsed: 0.0,
+            high: 0.0,
             samples: Vec::new(),
         }
     }
@@ -35,23 +38,33 @@ impl Sampler {
     }
 
     /// Call once per CPU cycle with the current speaker level.
+    ///
+    /// Each output sample is the exact average of the speaker level over its
+    /// period. A period is rarely a whole number of cycles (1 MHz / 44.1 kHz
+    /// is 22.68), so the cycle that crosses a boundary is split between the
+    /// two samples it touches. Getting this wrong makes a speaker that is
+    /// perfectly still sound like a faint tone.
     pub fn tick(&mut self, speaker_high: bool) {
         if !self.enabled {
             return;
         }
-        self.elapsed_cycles += 1.0;
-        if speaker_high {
-            self.high_cycles += 1.0;
+        let level = if speaker_high { 1.0 } else { 0.0 };
+        let time_left = self.cycles_per_sample - self.elapsed;
+        if time_left > 1.0 {
+            self.elapsed += 1.0;
+            self.high += level;
+            return;
         }
-        if self.elapsed_cycles >= self.cycles_per_sample {
-            // The fraction of this period the speaker was high: 0.0 to 1.0.
-            self.samples
-                .push((self.high_cycles / self.elapsed_cycles) as f32);
-            self.elapsed_cycles -= self.cycles_per_sample;
-            self.high_cycles = 0.0;
-            if self.samples.len() > MAX_BUFFERED_SAMPLES {
-                self.samples.drain(..MAX_BUFFERED_SAMPLES / 2);
-            }
+        // This cycle finishes the sample: the first `time_left` of it belongs
+        // to this sample, the rest to the next.
+        self.high += level * time_left;
+        self.samples
+            .push((self.high / self.cycles_per_sample) as f32);
+        let carried = 1.0 - time_left;
+        self.elapsed = carried;
+        self.high = level * carried;
+        if self.samples.len() > MAX_BUFFERED_SAMPLES {
+            self.samples.drain(..MAX_BUFFERED_SAMPLES / 2);
         }
     }
 
@@ -95,6 +108,28 @@ mod tests {
             sampler.tick(true);
         }
         assert_eq!(sampler.take_samples(), vec![1.0, 1.0]);
+    }
+
+    #[test]
+    fn a_still_speaker_gives_a_perfectly_flat_signal_even_when_a_sample_is_not_a_whole_number_of_cycles()
+     {
+        // 1 MHz at 44.1 kHz: 22.68 cycles per sample. A speaker stuck high must
+        // give exactly 1.0 every time, or it sounds like a faint whine.
+        for level in [true, false] {
+            let mut sampler = Sampler::new(1_000_000.0, 44_100.0);
+            sampler.enabled = true;
+            for _ in 0..1_000_000 {
+                sampler.tick(level);
+            }
+            let samples = sampler.take_samples();
+            assert!(samples.len() > 1000);
+            let expected = if level { 1.0 } else { 0.0 };
+            let worst = samples
+                .iter()
+                .map(|s| (s - expected).abs())
+                .fold(0.0, f32::max);
+            assert!(worst < 1e-5, "level {level}: samples vary by {worst}");
+        }
     }
 
     #[test]

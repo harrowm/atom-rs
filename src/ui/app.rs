@@ -261,6 +261,9 @@ impl AtomApp {
             self.autoplay.update(&mut self.atom, &mut self.typist);
         }
         if !self.running || self.rom_error.is_some() {
+            // Single-stepping in the debugger still makes speaker samples;
+            // throw them away so they do not play as a burst on resume.
+            self.atom.bus.sound.take_samples();
             return;
         }
 

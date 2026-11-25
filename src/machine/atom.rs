@@ -109,6 +109,17 @@ impl AtomBus {
         is_ram
     }
 
+    /// The RESET line, as far as the chips are concerned: the 8255, the 6522
+    /// and the disk controller all go back to their power-on state. (Without
+    /// this a program's sound or timer settings would survive a reset.)
+    fn reset_peripherals(&mut self) {
+        self.ppi.reset();
+        self.via = Via::new();
+        self.fdc.reset();
+        self.nmi_edge = false;
+        self.fdc_nmi_was_asserted = false;
+    }
+
     /// Read without side effects or clock ticks, for the debugger.
     pub fn peek(&self, addr: u16) -> u8 {
         match self.memory.region(addr) {
@@ -223,6 +234,7 @@ impl Atom {
 
     /// Press the reset button: the CPU loads PC from the reset vector.
     pub fn reset(&mut self) {
+        self.bus.reset_peripherals();
         self.cpu.reset(&mut self.bus);
     }
 
@@ -342,6 +354,27 @@ mod tests {
         atom.bus.read(0x0000);
         assert_eq!(atom.bus.cycles, 2);
         assert_eq!(atom.bus.vdg.line(), 0);
+    }
+
+    #[test]
+    fn reset_returns_the_chips_to_their_power_on_state() {
+        let mut atom = Atom::new();
+        atom.bus.write(0xB002, 0x0F); // speaker and colour set on
+        atom.bus.write(0xB000, 0xF5); // graphics mode bits and a keyboard row
+        atom.bus.write(0xB80E, 0xC0); // enable the VIA's timer 1 interrupt
+        atom.bus.write(0xB80B, 0x40); // free-running timer
+        atom.bus.write(0xB804, 10);
+        atom.bus.write(0xB805, 0);
+        atom.reset();
+        assert!(
+            !atom.bus.ppi.speaker(),
+            "the speaker must be off after a reset"
+        );
+        assert_eq!(atom.bus.ppi.port_a(), 0);
+        assert!(!atom.bus.ppi.colour_set());
+        let via = atom.bus.via.snapshot();
+        assert_eq!((via.enables, via.flags, via.aux_control), (0, 0, 0));
+        assert!(!atom.bus.via.irq());
     }
 
     #[test]
