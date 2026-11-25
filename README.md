@@ -202,3 +202,16 @@ Dependencies point one way: `ui` uses `machine`, which uses `cpu`.
 The memory map, character font and video behaviour follow Tom Walker's
 Atomulator. CPU tests are by Tom Harte and others (SingleStepTests), Klaus
 Dormann, and Bruce Clark.
+
+## Licence
+
+Licensed under the **GNU General Public License, version 2 only** (see
+[`LICENSE`](LICENSE)). This follows from Atomulator: the character font in
+`src/machine/font.rs` is copied from it, and the memory map, peripheral
+behaviour and key layout were worked out from reading its source. Atomulator
+states "licensed under the GPL" and ships the version 2 text, with no
+"or later" grant, so this project does the same.
+
+The test suites downloaded by `scripts/fetch_tests.sh` are not part of this
+repository and keep their own licences. The Atom ROMs are Acorn's and are not
+included.
