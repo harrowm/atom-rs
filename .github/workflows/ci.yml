@@ -23,7 +23,7 @@ jobs:
     name: Format and lints
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -37,7 +37,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install system libraries (sound) and cc65 (builds the decimal test)
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev cc65
@@ -50,7 +50,7 @@ jobs:
         id: singlestep
         run: echo "sha=$(git ls-remote https://github.com/SingleStepTests/65x02 HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
       - name: Cache the SingleStepTests
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: testdata/65x02
           key: singlestep-${{ steps.singlestep.outputs.sha }}
