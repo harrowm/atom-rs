@@ -113,3 +113,70 @@ fn run_until(
     }
     false
 }
+
+const REPTON_DISK: &str = "testdata/games/repton.ssd";
+
+fn hold_key(atom: &mut Atom, name: &str, frames: u32) {
+    let (row, column) = atom_rs::machine::keyboard::find_key(name).expect("key exists");
+    atom.bus.ppi.keyboard.set_key(row, column, true);
+    for _ in 0..frames {
+        atom.run_frame();
+    }
+    atom.bus.ppi.keyboard.release_all();
+}
+
+/// Repton reads its joystick through the AtoMMC interface (command A2 at
+/// B400, answer at B401) and ignores the keyboard for any direction the
+/// joystick seems to be pressing. With no AtoMMC the answer was open bus,
+/// which read as right, left and up all held, so Z, X, ; and . did nothing.
+#[test]
+fn repton_responds_to_the_direction_keys() {
+    if !Path::new(REPTON_DISK).exists() {
+        eprintln!("SKIPPED: {REPTON_DISK} not found (./scripts/make_game.sh RS/REPTON repton)");
+        return;
+    }
+    let Some(mut atom) = booted_atom(0) else {
+        return;
+    };
+    if !atom.bus.memory.disk_interface_fitted {
+        return;
+    }
+    atom.bus.fdc.drives[0] =
+        Some(DiskImage::from_bytes(std::fs::read(REPTON_DISK).unwrap(), 1).unwrap());
+
+    let mut typist = Typist::new();
+    typist.type_text("*DOS\n*RUN LOADER\n", 100);
+    for _ in 0..1600 {
+        typist.drive(&mut atom);
+        atom.run_frame();
+    }
+    // Space: menu -> title -> high scores -> the game.
+    for wait in [400, 360, 400] {
+        hold_key(&mut atom, "SPACE", 20);
+        for _ in 0..wait {
+            atom.run_frame();
+        }
+    }
+
+    let state = atom.save_state().unwrap();
+    let picture_after = |key: Option<&str>| -> Vec<u8> {
+        let mut copy = booted_atom(0).unwrap();
+        copy.load_state(&state).unwrap();
+        if let Some(key) = key {
+            hold_key(&mut copy, key, 30);
+        }
+        for _ in 0..30 {
+            copy.run_frame();
+        }
+        copy.bus.framebuffer.pixels.clone()
+    };
+    let idle = picture_after(None);
+    for key in ["Z", "X", ";", "."] {
+        let moved = picture_after(Some(key));
+        let changed = moved.iter().zip(&idle).filter(|(a, b)| a != b).count();
+        assert!(
+            changed > 500,
+            "holding {key} should move Repton, but only {changed} pixels changed"
+        );
+    }
+}

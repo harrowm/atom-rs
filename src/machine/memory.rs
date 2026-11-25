@@ -8,7 +8,7 @@
 //! 0A00-0AFF  8271 disk controller (only when the disk interface is fitted)
 //! A000-AFFF  Utility ROM socket
 //! B000-B3FF  8255 PPI  (keyboard, video mode, speaker, tape)
-//! B400-B7FF  AtoMMC / disk interface (not emulated yet)
+//! B400-B7FF  AtoMMC (only its joystick/port commands are emulated)
 //! B800-BBFF  6522 VIA
 //! BC00-BFFF  Other expansion (not emulated yet)
 //! C000-CFFF  BASIC ROM
@@ -60,6 +60,7 @@ pub enum Region {
     Ram,
     VideoRam,
     Fdc,
+    AtoMmc,
     Ppi,
     Via,
     Rom(RomSlot),
@@ -134,6 +135,7 @@ impl Memory {
             a if VIDEO_RAM.contains(&a) => Region::VideoRam,
             0xA000..=0xAFFF => Region::Rom(RomSlot::Utility),
             0xB000..=0xB3FF => Region::Ppi,
+            0xB400..=0xB7FF => Region::AtoMmc,
             0xB800..=0xBBFF => Region::Via,
             0xC000..=0xCFFF => Region::Rom(RomSlot::Basic),
             0xD000..=0xDFFF => Region::Rom(RomSlot::FloatingPoint),
@@ -171,6 +173,7 @@ mod tests {
         assert_eq!(memory.region(0x8000), Region::VideoRam);
         assert_eq!(memory.region(0xB002), Region::Ppi);
         assert_eq!(memory.region(0xB800), Region::Via);
+        assert_eq!(memory.region(0xB401), Region::AtoMmc);
         assert_eq!(memory.region(0xC000), Region::Rom(RomSlot::Basic));
         assert_eq!(memory.region(0xFFFC), Region::Rom(RomSlot::Kernel));
     }

@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use super::atm::AtmFile;
+use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
 use super::fdc8271::Fdc8271;
 use super::memory::{Memory, RamLayout, Region, RomSlot, open_bus};
@@ -38,6 +39,8 @@ pub struct AtomBus {
     pub tape: Tape,
     /// The disk controller (reachable once a disk ROM is loaded).
     pub fdc: Fdc8271,
+    /// The AtoMMC's joystick port (the SD card itself is not emulated).
+    pub atommc: AtoMmc,
     pub(super) fdc_nmi_was_asserted: bool,
     /// Breakpoints and watchpoints.
     pub debug: Debugger,
@@ -59,6 +62,7 @@ impl AtomBus {
             sound: Sampler::new(CLOCK_HZ, 44_100.0),
             tape: Tape::new(),
             fdc: Fdc8271::new(),
+            atommc: AtoMmc::default(),
             fdc_nmi_was_asserted: false,
             debug: Debugger::default(),
             external_irq: false,
@@ -116,6 +120,7 @@ impl AtomBus {
         self.ppi.reset();
         self.via = Via::new();
         self.fdc.reset();
+        self.atommc.reset();
         self.nmi_edge = false;
         self.fdc_nmi_was_asserted = false;
     }
@@ -125,7 +130,9 @@ impl AtomBus {
         match self.memory.region(addr) {
             Region::Ram | Region::VideoRam => self.memory.ram[addr as usize],
             Region::Rom(slot) => self.memory.read_rom(slot, addr),
-            Region::Ppi | Region::Via | Region::Fdc | Region::Unmapped => open_bus(addr),
+            Region::Ppi | Region::Via | Region::Fdc | Region::AtoMmc | Region::Unmapped => {
+                open_bus(addr)
+            }
         }
     }
 }
@@ -142,6 +149,7 @@ impl Bus for AtomBus {
             Region::Ppi => self.ppi.read(addr),
             Region::Via => self.via.read(addr),
             Region::Fdc => self.fdc.read(addr),
+            Region::AtoMmc => self.atommc.read(addr),
             Region::Unmapped => {
                 if self.debug.log_unmapped {
                     self.debug.note_unmapped(addr, false);
@@ -161,6 +169,7 @@ impl Bus for AtomBus {
             Region::Ppi => self.ppi.write(addr, value),
             Region::Via => self.via.write(addr, value),
             Region::Fdc => self.fdc.write(addr, value),
+            Region::AtoMmc => self.atommc.write(addr, value),
             Region::Rom(_) => {} // writes to ROM go nowhere
             Region::Unmapped => {
                 if self.debug.log_unmapped {

@@ -158,3 +158,6 @@ A speaker held still sounded like a faint whine and pausing thumped. Causes: (1)
 
 ### Key mapping window
 `ui/keymap.rs` is now a data table (`KeyMap`: host key name to `Target`, an Atom matrix key with optional Shift, or the separately wired SHIFT/CTRL/REPT), saved as JSON in `~/.config/atom-rs/keymap.json`. `ui/keyboard_window.rs` is a separate window listing every Atom key with the host keys bound to it, a Set button that captures the next key pressed, per-key removal, a filter and Reset to defaults. The host's Shift/Ctrl/Alt remain fixed (egui reports them as modifiers, not keys). Default added: the backtick key as a second `LOCK`, since Caps Lock is a toggle on a Mac.
+
+### AtoMMC joystick port
+Repton's Z, X, ; and . did nothing. The Retro Software ports read the joystick through the AtoMMC SD-card interface (write command `A2` to `B400`, read the answer from `B401`); with no AtoMMC the answer was open bus (`B4`), which decodes as right, left and up all held, so the keyboard was ignored. `machine/atommc.rs` now answers the port commands (`A0`-`A3`; no joystick reads as 0, as in Atomulator) and leaves every other command unanswered, so the DOS ROM's probing for an SD card behaves as before. The SD card itself is still not emulated. A joystick input (e.g. keys or a gamepad) could be wired to `AtoMmc::joystick` later.

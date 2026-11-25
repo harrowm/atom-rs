@@ -99,7 +99,7 @@ played properly.)
 | Asteroids | `AS/GAMES01/ASTEROID` | `'*RUN ASTEROI\n'` |
 | Breakout | `AS/GAMES01/BREAKOUT` | `'*RUN BREAKOU\n'` |
 | Elite (Retro Software port) | `RS/ELITE` (a folder) | `'*RUN ELITE\n'` |
-| Repton (Retro Software port) | `RS/REPTON` (a folder) | `'*RUN LOADER\n'` |
+| Repton (Retro Software port) | `RS/REPTON` (a folder) | `'*RUN LOADER\n'`, then press Space three times (menu, title, high scores) |
 | Jet Set Willy (Retro Software port) | `RS/JSW` (a folder) | `'LOAD "JSWRUN"\nRUN\n'` |
 
 **Galaxians** shows an instructions screen with no prompt. Press **A** to

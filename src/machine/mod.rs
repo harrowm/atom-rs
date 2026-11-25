@@ -5,6 +5,7 @@
 
 pub mod atm;
 pub mod atom;
+pub mod atommc;
 pub mod autoplay;
 pub mod debug;
 pub mod disk;
