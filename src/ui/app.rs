@@ -7,7 +7,8 @@ use eframe::egui::{self, Key, TextureHandle, TextureOptions, Vec2};
 
 use super::audio::AudioOutput;
 use super::debug::{AppState, Command, DebugWindows};
-use super::keymap::atom_key_for;
+use super::keyboard_window::KeyboardWindow;
+use super::keymap::{KeyMap, Target};
 use crate::cli::Options;
 use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
@@ -68,6 +69,9 @@ pub struct AtomApp {
     notice: Option<String>,
     /// Where the last `.atm` file loaded says to start it.
     loaded_exec: Option<u16>,
+    /// Which host keys press which Atom keys, and the window that edits it.
+    keymap: KeyMap,
+    keyboard_window: KeyboardWindow,
     /// Types commands for us (from `--run`, or the tape auto-play).
     typist: Typist,
     /// Start the tape by itself when the Atom says PLAY TAPE.
@@ -107,6 +111,8 @@ impl AtomApp {
             loaded_exec: None,
             disk_paths: [None, None],
             quick_state: None,
+            keymap: KeyMap::default(),
+            keyboard_window: KeyboardWindow::default(),
             typist: Typist::new(),
             autoplay_tape: false,
             autoplay: TapeAutoplay::default(),
@@ -125,6 +131,11 @@ impl AtomApp {
         windows.show_memory = options.debug;
         windows.show_breakpoints = options.debug;
         windows.show_hardware = options.debug;
+        let (keymap, problem) = KeyMap::load();
+        app.keymap = keymap;
+        if let Some(message) = problem {
+            app.notice = Some(message);
+        }
         app.apply_start_options(&options);
         app
     }
@@ -227,16 +238,23 @@ impl AtomApp {
         let keyboard = &mut self.atom.bus.ppi.keyboard;
         keyboard.release_all();
         let mut atom_shift = modifiers.shift;
+        let (mut atom_ctrl, mut atom_rept) = (modifiers.ctrl, modifiers.alt);
         for host_key in keys_down {
-            if let Some(press) = atom_key_for(host_key) {
-                let (row, column) = find_key(press.key).expect("keymap only names real keys");
-                keyboard.set_key(row, column, true);
-                atom_shift |= press.shift;
+            match self.keymap.target_for(host_key) {
+                Some(Target::Key { name, shift }) => {
+                    let (row, column) = find_key(name).expect("key maps only name real keys");
+                    keyboard.set_key(row, column, true);
+                    atom_shift |= *shift;
+                }
+                Some(Target::Shift) => atom_shift = true,
+                Some(Target::Ctrl) => atom_ctrl = true,
+                Some(Target::Rept) => atom_rept = true,
+                None => {}
             }
         }
         keyboard.shift = atom_shift;
-        keyboard.ctrl = modifiers.ctrl;
-        keyboard.rept = modifiers.alt;
+        keyboard.ctrl = atom_ctrl;
+        keyboard.rept = atom_rept;
         // The typist adds its own key presses on top of the real keyboard's.
         self.typist.update(keyboard, frame, ready);
 
@@ -811,6 +829,10 @@ impl AtomApp {
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.integer_scaling, "Integer scaling");
+                if ui.button("Keyboard mapping...").clicked() {
+                    self.keyboard_window.open = true;
+                    ui.close();
+                }
             });
             ui.menu_button("Debug", |ui| {
                 let windows = &mut self.debug_windows;
@@ -925,6 +947,13 @@ impl eframe::App for AtomApp {
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         egui::CentralPanel::default().show(ui, |ui| self.screen(ui));
+
+        // The keyboard mapping window; save the map whenever it changes.
+        if self.keyboard_window.show(ui.ctx(), &mut self.keymap)
+            && let Err(message) = self.keymap.save()
+        {
+            self.notice = Some(format!("Cannot save the key map: {message}"));
+        }
 
         // Debugger windows are separate OS windows; they hand back commands.
         let state = AppState {

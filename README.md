@@ -103,10 +103,11 @@ played properly.)
 | Jet Set Willy (Retro Software port) | `RS/JSW` (a folder) | `'LOAD "JSWRUN"\nRUN\n'` |
 
 **Galaxians** shows an instructions screen with no prompt. Press **A** to
-start a one-player game (**B** for two). Then **Caps Lock** moves left,
-**Shift** moves right and **Alt/Option** (the Atom's REPT key) fires. On a Mac
-Caps Lock behaves as a toggle, so if it feels wrong, the Atom's `LOCK` key is
-the one at the left end of its middle row.
+start a one-player game (**B** for two). Then the Atom's `LOCK` key moves left
+(on your keyboard: the **`** key above Tab, or Caps Lock), **Shift** moves right
+and **Alt/Option** (the Atom's REPT key) fires. Both left-hand choices exist
+because a Mac's Caps Lock behaves as a toggle. You can change any of this: see
+*Changing the keys*.
 
 (Names are at most 7 characters on a disk, so longer ones are cut: `GALAXIAN`
 becomes `GALAXIA`.) A BASIC program is started with BASIC's own `LOAD` and `RUN`;
@@ -153,7 +154,7 @@ wherever you start the program.
 
 | Key | Action |
 |-----|--------|
-| letters, digits, punctuation | the Atom key in the same position (US layout) |
+| letters, digits, punctuation | the Atom key in the same position (US layout); change in *View > Keyboard mapping* |
 | Shift, Ctrl | Shift, Ctrl |
 | Alt | REPT |
 | Enter, Backspace | RETURN, DELETE |
@@ -161,6 +162,19 @@ wherever you start the program.
 | End, Tab | COPY, `^` |
 | F12 | BREAK (reset) |
 | F6, F7 | quick save / quick load of the whole machine |
+
+### Changing the keys
+
+**View > Keyboard mapping...** opens a window listing every Atom key and the
+keys on your keyboard that press it. Click **Set** next to an Atom key, then
+press the key you want; click a key's name to remove it; **Reset all to
+defaults** puts everything back. A key can only do one thing, so binding it to
+a new Atom key takes it off the old one (the window tells you what it
+replaced). Esc cancels. Your Shift, Ctrl and Alt keys are always the Atom's
+SHIFT, CTRL and REPT, and F6, F7 and F12 belong to the emulator.
+
+Changes are saved to `~/.config/atom-rs/keymap.json`, which you can also edit
+or delete by hand.
 
 Menus: **File** loads a ROM into a socket, chooses a ROM folder, or loads an
 `.atm` program into memory. **Tape** inserts, plays, rewinds, records and saves
