@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/harrowm/atom-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/harrowm/atom-rs/actions/workflows/ci.yml)
 [![Licence: GPL v2](https://img.shields.io/badge/licence-GPL--2.0--only-blue.svg)](LICENSE)
+![Tests](badges/tests.svg)
 ![Rust 2024](https://img.shields.io/badge/rust-2024%20edition-orange.svg)
 
 A cycle-accurate emulator of the Acorn Atom (1980), written as a learning

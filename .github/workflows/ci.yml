@@ -36,6 +36,8 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # to commit the test-count badge
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -69,3 +71,22 @@ jobs:
           awk '/^test result/ { passed += $4; failed += $6 }
                END { printf "### Tests\n\n**%d passed**, %d failed\n", passed, failed }' \
             test.log >> "$GITHUB_STEP_SUMMARY"
+
+      # Keep badges/tests.svg (shown in the README) in step with the real count.
+      # Only on master, and only when the count changed. A commit made with the
+      # built-in token does not start another run.
+      - name: Update the test-count badge
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          passed=$(awk '/^test result/ { p += $4 } END { print p }' test.log)
+          ./scripts/make_badge.sh "$passed" > badges/tests.svg
+          if git diff --quiet badges/tests.svg; then
+            echo "Badge already says $passed passed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add badges/tests.svg
+          git commit -m "Update test badge ($passed passed) [skip ci]"
+          git pull --rebase origin master
+          git push
