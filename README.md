@@ -55,14 +55,25 @@ cargo build --release                 # just build; binary is target/release/ato
 
 ### Browsing the whole Atom Software Archive (AtoMMC SD card)
 
-The easiest way to try the archive's ~1,100 titles is to let the emulator treat
-its folder as an **SD card**. The Atom Software Archive is laid out exactly as
-the contents of an AtoMMC card, with its own menu program, so there is nothing
-to build:
+The easiest way to try the archive's ~1,100 titles is one command:
 
 ```sh
-./scripts/get_archive.sh                       # downloads and unpacks it (once)
-cargo run --release -- --sdcard testdata/asa_v13_01/files --run '*MENU\n'
+cargo run --release -- --archive
+```
+
+The first time, it downloads the latest Atom Software Archive from GitHub (about
+17 MB) and keeps it in `~/.cache/atom-rs/archive`. Every time after that it asks
+GitHub whether there is a newer release, downloads it only if there is, and
+starts the archive's menu. With no network it uses the copy it already has.
+(It takes the newest release, which is currently a pre-release, as the
+maintainers flag every recent one that way.)
+
+Under the hood the emulator treats the archive's folder as an **SD card**. The
+archive is laid out exactly as the contents of an AtoMMC card, with its own menu
+program. To use a copy you already have, or any other folder:
+
+```sh
+cargo run --release -- --sdcard path/to/folder --run '*MENU\n'
 ```
 
 You get "ACORN ATOM software archive, maintained by Hoglet": press **A** to **G**

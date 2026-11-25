@@ -2,6 +2,7 @@
 //!
 //! Run `atom-rs --help` for the options.
 
+mod archive;
 mod cli;
 mod ui;
 
@@ -25,8 +26,18 @@ fn default_rom_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("roms"))
 }
 
+/// `--archive`: get the latest archive and make it the SD card, starting its
+/// menu unless the user asked for something else to be typed.
+fn use_latest_archive(options: &mut cli::Options) -> Result<(), String> {
+    let cache = archive::cache_folder()?;
+    let card = archive::prepare(&cache, &mut |message| eprintln!("{message}"))?;
+    options.sdcard = Some(card);
+    options.run.get_or_insert_with(|| "*MENU\n".to_string());
+    Ok(())
+}
+
 fn main() -> eframe::Result {
-    let options = match cli::parse(std::env::args_os().skip(1)) {
+    let mut options = match cli::parse(std::env::args_os().skip(1)) {
         Ok(cli::Parsed::Run(options)) => *options,
         Ok(cli::Parsed::Help) => {
             print!("{}", cli::USAGE);
@@ -37,6 +48,12 @@ fn main() -> eframe::Result {
             std::process::exit(2);
         }
     };
+    if options.archive
+        && let Err(message) = use_latest_archive(&mut options)
+    {
+        eprintln!("atom-rs: {message}");
+        std::process::exit(1);
+    }
     let rom_dir = options.rom_dir.clone().unwrap_or_else(default_rom_dir);
 
     let native_options = eframe::NativeOptions {

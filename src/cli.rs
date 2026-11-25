@@ -12,6 +12,9 @@ Options:
   --disk1 FILE     put a disk image in drive 1
   --sdcard FOLDER  use a folder as an AtoMMC SD card (needs roms/ramrom.rom).
                    Try the archive's menu with --run '*MENU\n'
+  --archive        fetch the latest Atom Software Archive (the first time, and
+                   whenever a newer one is published), use it as the SD card
+                   and start its menu. Needs roms/ramrom.rom
   --tape FILE      insert a tape (.uef). It plays by itself when the Atom
                    says PLAY TAPE
   --state FILE     start from a saved state (.atomstate)
@@ -24,6 +27,7 @@ Options:
 ROM_FOLDER defaults to ./roms.
 
 Examples:
+  atom-rs --archive
   atom-rs --sdcard testdata/asa_v13_01/files --run '*MENU\n'
   atom-rs --disk games.ssd --run '*RUN CHUCKIE\n'
   atom-rs --tape chuckie.uef --fast-tape --run '*RUN ""\n'
@@ -36,6 +40,8 @@ pub struct Options {
     pub disks: [Option<PathBuf>; 2],
     /// A folder to use as the AtoMMC SD card.
     pub sdcard: Option<PathBuf>,
+    /// Fetch the Atom Software Archive and use it as the SD card.
+    pub archive: bool,
     pub tape: Option<PathBuf>,
     pub state: Option<PathBuf>,
     /// Text to type after start-up, with `\n` already turned into newlines.
@@ -67,6 +73,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, String>
             "--fast-tape" => options.fast_tape = true,
             "--disk" => options.disks[0] = Some(value("--disk")?.into()),
             "--disk1" => options.disks[1] = Some(value("--disk1")?.into()),
+            "--archive" => options.archive = true,
             "--sdcard" => options.sdcard = Some(value("--sdcard")?.into()),
             "--tape" => options.tape = Some(value("--tape")?.into()),
             "--state" => options.state = Some(value("--state")?.into()),
@@ -130,6 +137,7 @@ mod tests {
         let o = options(&[
             "--debug",
             "--fast-tape",
+            "--archive",
             "--disk",
             "a.ssd",
             "--disk1",
@@ -144,7 +152,7 @@ mod tests {
             "*CAT\\n",
             "my/roms",
         ]);
-        assert!(o.debug && o.fast_tape);
+        assert!(o.debug && o.fast_tape && o.archive);
         assert_eq!(o.disks, [Some("a.ssd".into()), Some("b.dsd".into())]);
         assert_eq!(o.sdcard, Some("card".into()));
         assert_eq!(o.tape, Some("t.uef".into()));
