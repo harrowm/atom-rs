@@ -81,6 +81,15 @@ impl RamLayout {
         }
     }
 
+    /// RAM everywhere from `0000` to `7FFF`, including the page at `0A00`
+    /// where the 8271 disk controller would otherwise be. This is what a machine
+    /// with an AtoMMC (and no floppy controller) has.
+    pub fn full() -> Self {
+        RamLayout {
+            ranges: std::iter::once(0x0000..0x8000).collect(),
+        }
+    }
+
     /// The Atom with its RAM expansion: everything from `0000` to `7FFF`
     /// except the disk controller's page at `0A00-0AFF`, about 31K. Much
     /// software (Chuckie Egg, for one) keeps its variables in `0400-07FF`.
@@ -117,6 +126,11 @@ impl Memory {
             layout,
             disk_interface_fitted: false,
         }
+    }
+
+    /// Change which parts of `0000-7FFF` have RAM.
+    pub fn set_layout(&mut self, layout: RamLayout) {
+        self.layout = layout;
     }
 
     pub fn load_rom(&mut self, slot: RomSlot, data: &[u8]) -> Result<(), String> {

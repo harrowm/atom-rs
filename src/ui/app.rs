@@ -146,6 +146,9 @@ impl AtomApp {
         if self.rom_error.is_some() {
             return;
         }
+        if let Some(folder) = &options.sdcard {
+            self.use_sd_card(folder.clone());
+        }
         for (drive, path) in options.disks.iter().enumerate() {
             if let Some(path) = path {
                 self.insert_disk_file(drive, path);
@@ -163,7 +166,7 @@ impl AtomApp {
         }
         if let Some(text) = &options.run {
             // The disk system must be switched on before it can run anything.
-            let uses_disk = options.disks.iter().any(Option::is_some);
+            let uses_disk = options.disks.iter().any(Option::is_some) && options.sdcard.is_none();
             let text = if uses_disk && !text.starts_with("*DOS") {
                 format!("*DOS\n{text}")
             } else {
@@ -204,6 +207,33 @@ impl AtomApp {
             self.rom_dir = dir;
             self.load_roms();
         }
+    }
+
+    /// Switch to an Atom with an AtoMMC SD card whose files are in `folder`.
+    fn use_sd_card(&mut self, folder: PathBuf) {
+        self.notice = Some(match self.atom.use_sd_card(&self.rom_dir, folder.clone()) {
+            Ok(()) => format!(
+                "SD card: {}. Try *CAT, or *MENU for the software archive.",
+                folder.display()
+            ),
+            Err(message) => format!("Cannot use the SD card: {message}"),
+        });
+    }
+
+    fn choose_sd_card(&mut self) {
+        if let Some(folder) = rfd::FileDialog::new()
+            .set_title("Folder to use as the SD card")
+            .pick_folder()
+        {
+            self.use_sd_card(folder);
+        }
+    }
+
+    fn use_floppy_disks(&mut self) {
+        self.notice = Some(match self.atom.use_floppy_disks(&self.rom_dir) {
+            Ok(()) => "Back to floppy disks (Atom DOS)".to_string(),
+            Err(message) => format!("Cannot switch back: {message}"),
+        });
     }
 
     fn load_single_rom(&mut self, slot: RomSlot) {
@@ -671,6 +701,25 @@ impl AtomApp {
                     ui.close();
                 }
                 ui.separator();
+                let sd_active = self.atom.bus.atommc.card_folder().is_some();
+                if ui
+                    .button("Use a folder as an SD card (AtoMMC)...")
+                    .clicked()
+                {
+                    self.choose_sd_card();
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        sd_active,
+                        egui::Button::new("Back to floppy disks (Atom DOS)"),
+                    )
+                    .clicked()
+                {
+                    self.use_floppy_disks();
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button("Save state...").clicked() {
                     self.save_state_file();
                     ui.close();
@@ -781,7 +830,10 @@ impl AtomApp {
                 );
             });
             ui.menu_button("Disk", |ui| {
-                if !self.atom.bus.memory.disk_interface_fitted {
+                if self.atom.bus.atommc.card_folder().is_some() {
+                    ui.label("SD card (AtoMMC) mode: no floppy drives.");
+                    ui.label("Use File > Back to floppy disks to return.");
+                } else if !self.atom.bus.memory.disk_interface_fitted {
                     ui.label("No disk ROM loaded (dosrom.rom)");
                 }
                 for drive in 0..2 {
@@ -863,6 +915,13 @@ impl AtomApp {
                 };
                 ui.separator();
                 ui.colored_label(egui::Color32::LIGHT_GREEN, text);
+            }
+            if let Some(folder) = self.atom.bus.atommc.card_folder() {
+                ui.separator();
+                let name = folder
+                    .file_name()
+                    .map_or_else(|| "?".into(), |n| n.to_string_lossy());
+                ui.label(format!("SD: {name}"));
             }
             let tape = &self.atom.bus.tape;
             if tape.recording {

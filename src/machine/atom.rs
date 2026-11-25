@@ -5,13 +5,13 @@
 //! chips by one clock cycle, then performs the access. The CPU therefore
 //! drives the clock and everything stays in lock-step.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::atm::AtmFile;
 use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
 use super::fdc8271::Fdc8271;
-use super::memory::{Memory, RamLayout, Region, RomSlot, open_bus};
+use super::memory::{Memory, ROM_SIZE, RamLayout, Region, RomSlot, open_bus};
 use super::ppi8255::Ppi;
 use super::sound::Sampler;
 use super::tape::Tape;
@@ -22,6 +22,17 @@ use crate::cpu::{Bus, Cpu};
 
 /// The Atom's CPU clock.
 pub const CLOCK_HZ: f64 = 1_000_000.0;
+
+/// The Ramoth RAM/ROM image holds 128K of ROMs. These are the parts of it that
+/// make an AtoMMC machine: where in the file each 4K ROM starts.
+const RAMROM_IMAGE_SIZE: usize = 0x20000;
+const RAMROM_SLICES: [(RomSlot, usize); 5] = [
+    (RomSlot::Utility, 0x00000),       // #A000 bank 0
+    (RomSlot::Basic, 0x10000),         // Atom BASIC (disk ROM enabled)
+    (RomSlot::FloatingPoint, 0x11000), // Atom floating point
+    (RomSlot::Disk, 0x12000),          // the AtoMMC ROM, instead of Atom DOS
+    (RomSlot::Kernel, 0x13000),        // Atom kernel
+];
 
 /// Everything the CPU can reach over its bus.
 pub struct AtomBus {
@@ -226,6 +237,50 @@ impl Atom {
                 Err(_) => {}
             }
         }
+        Ok(())
+    }
+
+    /// Go back to the standard Atom: the ROMs in `rom_dir` (Atom DOS and the
+    /// 8271 floppy controller) and no SD card. Resets the machine.
+    pub fn use_floppy_disks(&mut self, rom_dir: &Path) -> Result<(), String> {
+        self.load_roms(rom_dir)?;
+        self.bus.memory.set_layout(RamLayout::expanded());
+        self.bus.atommc.remove_card();
+        self.reset();
+        Ok(())
+    }
+
+    /// Turn this into an Atom with an AtoMMC SD card interface, using the
+    /// folder `card_folder` as the card.
+    ///
+    /// The AtoMMC ROM replaces the Atom DOS ROM, and the machine uses the
+    /// matching kernel and BASIC. All of these come from the 128K
+    /// `ramrom.rom` image (the Ramoth RAM/ROM board's ROMs, as shipped with
+    /// Atomulator), which must be in `rom_dir`. The disk controller's page at
+    /// `0A00` becomes RAM. Resets the machine.
+    pub fn use_sd_card(&mut self, rom_dir: &Path, card_folder: PathBuf) -> Result<(), String> {
+        let path = rom_dir.join("ramrom.rom");
+        let image = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if image.len() != RAMROM_IMAGE_SIZE {
+            return Err(format!(
+                "{} should be {RAMROM_IMAGE_SIZE} bytes",
+                path.display()
+            ));
+        }
+        let memory = &mut self.bus.memory;
+        for (slot, offset) in RAMROM_SLICES {
+            memory.load_rom(slot, &image[offset..offset + ROM_SIZE])?;
+        }
+        memory.disk_interface_fitted = false;
+        memory.set_layout(RamLayout::full());
+
+        let mut atommc = AtoMmc::with_card(card_folder);
+        if let Ok(eeprom) = std::fs::read(rom_dir.join("mmc_eeprom.rom")) {
+            atommc.load_eeprom(&eeprom);
+        }
+        atommc.joystick = self.bus.atommc.joystick;
+        self.bus.atommc = atommc;
+        self.reset();
         Ok(())
     }
 

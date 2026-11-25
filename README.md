@@ -38,7 +38,9 @@ See [`plan.md`](plan.md) for the roadmap and design notes.
   ```
 * Atom ROM images in `roms/` (git-ignored): `akernel.rom`, `abasic.rom` and
   `afloat.rom` are required; `axr1.rom` (utility) and `dosrom.rom` (disk) are
-  optional. Without `dosrom.rom` there is no disk interface. Atomulator's repository ships a set in its `roms/` folder.
+  optional. Without `dosrom.rom` there is no disk interface. `ramrom.rom`
+  (128K, also in Atomulator's `roms/` folder) is only needed for the SD card
+  mode below. Atomulator's repository ships a set in its `roms/` folder.
 * Optional, for the full test suite: `git`, `curl`, and `cc65`
   (`brew install cc65`) to build the decimal-mode test.
 
@@ -50,6 +52,41 @@ cargo run --release -- --debug        # ...with all the debugger windows open
 cargo run --release -- /path/to/roms  # use a different ROM folder
 cargo build --release                 # just build; binary is target/release/atom-rs
 ```
+
+### Browsing the whole Atom Software Archive (AtoMMC SD card)
+
+The easiest way to try the archive's ~1,100 titles is to let the emulator treat
+its folder as an **SD card**. The Atom Software Archive is laid out exactly as
+the contents of an AtoMMC card, with its own menu program, so there is nothing
+to build:
+
+```sh
+./scripts/get_archive.sh                       # downloads and unpacks it (once)
+cargo run --release -- --sdcard testdata/asa_v13_01/files --run '*MENU\n'
+```
+
+You get "ACORN ATOM software archive, maintained by Hoglet": press **A** to **G**
+for a category (Commercial, Modern Creations, Arcade Game Designer, Non
+Commercial, Books and Magazines, Utility ROMs, All Titles), then pick a title
+from the list ("ATOMMC BY TITLE, page 1/23") with the keys it shows. When I
+tried it, **Return** loaded the highlighted first title, 3D Asteroids, from the
+folder and ran it.
+
+This needs `roms/ramrom.rom` (the 128K ROM image Atomulator ships, which holds
+the AtoMMC ROM, the kernel and BASIC to match). It can also be chosen from the
+**File > Use a folder as an SD card...** menu, and **Back to floppy disks** goes
+back to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
+are no floppy drives.
+
+Any folder works as a card, not just the archive: put programs in it (in the
+`.atm` format, which is what `*SAVE` writes) and use `*CAT`, `*LOAD NAME`,
+`*SAVE NAME start end` and `*NAME` to run one. File names must be valid 8.3
+names, are matched without regard to case, and nothing outside the folder can
+be reached. What you save from the Atom appears in the folder as an ordinary
+file.
+
+Not emulated yet: SDDOS (disk images stored on the card), so games that insist
+on a floppy still use the disk method below.
 
 ### Running games from the Atom Software Archive
 

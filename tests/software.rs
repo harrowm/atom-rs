@@ -180,3 +180,71 @@ fn repton_responds_to_the_direction_keys() {
         );
     }
 }
+
+const ARCHIVE: &str = "testdata/asa_v13_01/files";
+
+/// The Atom Software Archive is laid out as an SD card. With the AtoMMC
+/// emulated and the archive folder as the card, its own menu program runs: it
+/// lists the titles and loads the one you pick.
+#[test]
+fn archive_menu_browses_the_sd_card_and_launches_a_game() {
+    if !Path::new(ARCHIVE).join("MENU").exists() || !Path::new("roms/ramrom.rom").exists() {
+        eprintln!("SKIPPED: needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
+        return;
+    }
+    let mut atom = Atom::new();
+    atom.use_sd_card(Path::new("roms"), ARCHIVE.into())
+        .expect("AtoMMC ROMs load");
+    for _ in 0..120 {
+        atom.run_frame();
+    }
+
+    let mut typist = Typist::new();
+    typist.type_text("*MENU\n", 0);
+    let menu_mode = VideoMode::Graphics {
+        width: 256,
+        height: 192,
+        colours: 2,
+    };
+    assert!(
+        run_until(&mut atom, &mut typist, 3000, |a| a.video_mode()
+            == menu_mode
+            && lit_pixels(a) > 5000),
+        "the archive's front menu never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+
+    // Give the menu a moment to start reading keys, then choose (A) Commercial.
+    run_until(&mut atom, &mut typist, 200, |_| false);
+    hold_key(&mut atom, "A", 15);
+    assert!(
+        run_until(&mut atom, &mut typist, 1500, |a| screen_has(a, "BY TITLE")),
+        "the list of titles never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+    assert!(
+        run_until(&mut atom, &mut typist, 600, |a| screen_has(
+            a,
+            "3D ASTEROIDS"
+        )),
+        "the first title should be 3D Asteroids:\n{}",
+        atom.screen_text().join("\n")
+    );
+
+    // RETURN loads the highlighted title from the card and runs it. (As with
+    // the first menu, wait a moment for it to start reading keys.)
+    run_until(&mut atom, &mut typist, 300, |_| false);
+    hold_key(&mut atom, "RETURN", 15);
+    assert!(
+        run_until(&mut atom, &mut typist, 4000, |a| screen_has(
+            a,
+            "ASTEROID STORM"
+        )),
+        "the game never loaded:\n{}",
+        atom.screen_text().join("\n")
+    );
+}
+
+fn screen_has(atom: &Atom, text: &str) -> bool {
+    atom.screen_text().iter().any(|row| row.contains(text))
+}
