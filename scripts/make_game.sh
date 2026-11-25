@@ -6,8 +6,8 @@
 #   ./scripts/make_game.sh AA/GALAXIAN galaxian   # choose the disk's name
 #
 # The path is relative to the archive's ASA folder: browse
-# testdata/asa_v13_01/files/ASA/ to see what is there. If you have not
-# downloaded the archive yet, run ./scripts/make_chuckie.sh once first.
+# testdata/asa_v13_01/files/ASA/ to see what is there. The archive is
+# downloaded automatically the first time (see get_archive.sh).
 #
 # The disk is written to testdata/games/NAME.ssd and the command to run it is
 # printed.
@@ -25,9 +25,13 @@ SOURCE="$ROOT/$1"
 NAME=${2:-$(basename "$1" | tr 'A-Z' 'a-z')}
 OUT="testdata/games/$NAME.ssd"
 
+# Fetch the archive the first time.
+if [ ! -d "$ROOT" ]; then
+    ./scripts/get_archive.sh
+fi
 if [ ! -e "$SOURCE" ]; then
     echo "Not found: $SOURCE" >&2
-    echo "(download the archive first with ./scripts/make_chuckie.sh)" >&2
+    echo "(browse $ROOT to see what is there)" >&2
     exit 1
 fi
 mkdir -p testdata/games

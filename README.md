@@ -51,70 +51,71 @@ cargo run --release -- /path/to/roms  # use a different ROM folder
 cargo build --release                 # just build; binary is target/release/atom-rs
 ```
 
-### Running Chuckie Egg
+### Running games from the Atom Software Archive
 
 The [Atom Software Archive](https://github.com/hoglet67/AtomSoftwareArchive)
-holds a huge library of Atom software, stored as individual program files with
-a 22-byte header (the `.atm` format). One script downloads it, takes out the
-Retro Software version of Chuckie Egg and packs it onto a floppy disk image:
+is a huge library of Atom software, kept at stardot.org.uk. Each program in it
+is stored as a file with a small header (the `.atm` format). Many of the games
+are conversions by Kees van Oss for Retro Software (the `RS/` folders), made to
+run from an SD card interface. This emulator reads them from a floppy disk
+instead, so there are two steps: **make a disk**, then **run it**.
+
+**1. Make the disks** (once). This downloads the archive (about 17 MB, kept in
+`testdata/`, not in this repository) and packs each game onto a disk image in
+`testdata/games/`:
 
 ```sh
-./scripts/make_chuckie.sh
-cargo run --release -- --disk testdata/games/chuckie.ssd --run '*RUN RUNME\n'
+./scripts/make_all_games.sh                      # every game in the table below
+./scripts/make_game.sh RS/JSW jsw                # or just one
 ```
 
-`*RUN RUNME` is the game's own loader. It shows a menu: press **2** for colour
-(or **1** for monochrome). After the intro text you reach the high scores screen:
-press **Start** (see the game for the key) or **K** to change the keys, which
-you can redefine to whatever suits your keyboard.
-
-The same trick works for any program in the archive: `atom_rs`'s
-`atm2ssd` example (`cargo run --release --example atm2ssd -- OUT.ssd FILE...`)
-packs `.atm` files onto a disk, and `--run` types the command to start it.
-
-### More games from the archive
-
-`scripts/make_game.sh` packs any program from the archive onto a disk and
-prints how to start it (it reads the program's header to tell BASIC programs
-from machine code). For example:
+**2. Run one.** Each game is started by typing a command, which `--run` does for
+you (`\n` is the RETURN key; `*DOS` is typed first automatically):
 
 ```sh
-./scripts/make_game.sh AS/GAMES09/SNAPPER snapper
-cargo run --release -- --disk testdata/games/snapper.ssd --run 'LOAD "SNAPPER"\nRUN\n'
+cargo run --release -- --disk testdata/games/<disk>.ssd --run '<text>'
 ```
 
-These all load and reach their title, menu or first screen in the emulator.
-(Checked by running them and looking at the picture; only Chuckie Egg has been
-played properly.)
+For example, Jet Set Willy:
 
-| Game | Archive path | `--run` text |
-|------|--------------|--------------|
-| Chuckie Egg | `RS/CHUCKIE` (a folder) | `'*RUN RUNME\n'` |
-| Snapper (Pac-Man style) | `AS/GAMES09/SNAPPER` | `'LOAD "SNAPPER"\nRUN\n'` |
-| Pinball | `BB/PINBALL` | `'LOAD "PINBALL"\nRUN\n'` |
-| Space Panic | `AF/PANIC` | `'*RUN PANIC\n'` |
-| Frogger | `AF/FROGGER` | `'*RUN FROGGER\n'` |
-| Galaxians | `AA/GALAXIAN` | `'*RUN GALAXIA\n'` |
-| Space Invaders | `AA/INVADER` | `'*RUN INVADER\n'` |
-| Asteroids | `AS/GAMES01/ASTEROID` | `'*RUN ASTEROI\n'` |
-| Breakout | `AS/GAMES01/BREAKOUT` | `'*RUN BREAKOU\n'` |
-| Elite (Retro Software port) | `RS/ELITE` (a folder) | `'*RUN ELITE\n'` |
-| Repton (Retro Software port) | `RS/REPTON` (a folder) | `'*RUN LOADER\n'`, then press Space three times (menu, title, high scores) |
-| Jet Set Willy (Retro Software port) | `RS/JSW` (a folder) | `'LOAD "JSWRUN"\nRUN\n'` |
+```sh
+cargo run --release -- --disk testdata/games/jsw.ssd --run 'LOAD "JSWRUN"\nRUN\n'
+```
 
-**Galaxians** shows an instructions screen with no prompt. Press **A** to
-start a one-player game (**B** for two). Then the Atom's `LOCK` key moves left
-(on your keyboard: the **`** key above Tab, or Caps Lock), **Shift** moves right
-and **Alt/Option** (the Atom's REPT key) fires. Both left-hand choices exist
-because a Mac's Caps Lock behaves as a toggle. You can change any of this: see
-*Changing the keys*.
+| Game | Disk | `--run` text | What to do next |
+|------|------|--------------|-----------------|
+| Chuckie Egg | `chuckie` | `'*RUN RUNME\n'` | Press **2** for colour (1 for monochrome), then **S** to start and **1** for one player. Press **K** on the high-scores screen to choose your own keys. |
+| Jet Set Willy | `jsw` | `'LOAD "JSWRUN"\nRUN\n'` | Press any key through the instructions and the controls screen (**1** = keyboard, the default), then any key at the title to start. **Z** left, **X** right, **RETURN** jump. |
+| Repton | `repton` | `'*RUN LOADER\n'` | Press **Space** three times (menu, title, high scores). **Z** left, **X** right, **;** up, **.** down, **Esc** kill, **R** restart, **Q**/**S** sound, **End** or **Backspace** pause. |
+| Elite | `elite` | `'*RUN ELITE\n'` | Starts with an intro screen. In flight: **<** and **>** roll, **S** dive, **X** climb, **Space** faster, **/** slower, **H** hyperspace, **Shift+1** to **Shift+0** the views and screens. The full list is in `RS/ELITE/KEYS.TXT` in the archive. |
+| Snapper | `snapper` | `'LOAD "SNAPPER"\nRUN\n'` | A Pac-Man style game; it starts straight away. |
+| Pinball | `pinball` | `'LOAD "PINBALL"\nRUN\n'` | Answer "1 OR 2 PLAYERS?". |
+| Space Panic | `panic` | `'*RUN PANIC\n'` | The instructions screen lists the keys. |
+| Frogger | `frogger` | `'*RUN FROGGER\n'` | **T** up, **B** down, **F** left, **H** right. |
+| Galaxians | `galaxian` | `'*RUN GALAXIA\n'` | Press **A** for one player or **B** for two. Then **LOCK** moves left (the **`** key, or Caps Lock), **Shift** moves right, **Alt/Option** (the Atom's REPT) fires. |
+| Space Invaders | `invaders` | `'*RUN INVADER\n'` | Starts at a "PLAY SPACE INVADERS" screen. |
+| Asteroids | `asteroid` | `'*RUN ASTEROI\n'` | |
+| Breakout | `breakout` | `'*RUN BREAKOU\n'` | **Shift** left, **Alt/Option** (REPT) right, **Ctrl** to serve and to start. |
 
-(Names are at most 7 characters on a disk, so longer ones are cut: `GALAXIAN`
-becomes `GALAXIA`.) A BASIC program is started with BASIC's own `LOAD` and `RUN`;
-`*RUN` is for machine code, and for BASIC programs that start themselves.
+A few notes:
 
-The typist waits for the Atom's `>` prompt after each RETURN, as a person
-would, so a second command typed right after a disk load is not lost.
+* Every game in the table loads and reaches its first screens in the emulator
+  (checked by running it and looking at the picture, and for Chuckie Egg and
+  Repton by tests that press the keys). Only Chuckie Egg has been played
+  properly, so expect rough edges and please report them.
+* **BASIC or machine code?** A BASIC program is started by BASIC's own `LOAD`
+  and `RUN`; machine code (and BASIC programs that start themselves) use
+  `*RUN`. `make_game.sh` reads the program's header and prints which to use.
+* A disk catalogue allows names of 7 characters, so `GALAXIANS` becomes
+  `GALAXIA` and so on. That is why the table says `*RUN GALAXIA`.
+* The keys are the ones on the Atom, found by position: see *Changing the
+  keys* if a game wants a key that is awkward on your keyboard.
+* **Other games:** browse `testdata/asa_v13_01/files/ASA/` for more. A game that
+  is one file or a folder works with `./scripts/make_game.sh AF/PANIC panic`
+  (a path under `ASA/`, then a disk name). For a folder the loader is usually
+  called `RUNME` or `LOADER`. Some games may need hardware the emulator does not
+  have yet (SID sound, the SD card itself); the Hardware debug window's
+  *Unmapped memory* log shows what a game reaches for.
 
 ### Starting a program from the command line
 
@@ -263,7 +264,7 @@ cargo test --test dormann -- --nocapture                 # Dormann + decimal + i
 cargo test --test boot -- --nocapture                    # boot the ROMs, type BASIC lines, save states
 cargo test --test tape -- --nocapture                    # *SAVE to tape, wipe memory, *LOAD it back
 cargo test --test disk -- --nocapture                    # the real DOS lists, loads and saves on a disk image
-cargo test --test software -- --nocapture                # Chuckie Egg (needs scripts/make_chuckie.sh first)
+cargo test --test software -- --nocapture                # Chuckie Egg and Repton (needs ./scripts/make_all_games.sh first)
 ```
 
 The big CPU tests need external data, which is not stored in this repository:
@@ -309,7 +310,7 @@ src/
   lib.rs        the library (cpu + machine); main.rs is the application
 tests/          SingleStepTests, Dormann tests, boot, tape and disk tests
 examples/       bench.rs
-scripts/        fetch_tests.sh, make_chuckie.sh
+scripts/        fetch_tests.sh, get_archive.sh, make_game.sh, make_all_games.sh
 roms/           your Atom ROMs (git-ignored)
 testdata/       downloaded test suites (git-ignored)
 ```
