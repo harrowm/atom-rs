@@ -1,0 +1,71 @@
+//! Saves a program to the emulated cassette with `*SAVE`, wipes memory, and
+//! loads it back with `*LOAD`. This exercises tape output, the recorder and
+//! decoder, UEF files, tape playback and tape input, all with the real ROMs.
+
+mod common;
+
+use common::{booted_atom, screen_string, type_text};
+
+const START: u16 = 0x2900;
+const DATA: [u8; 12] = [
+    0xA9, 0x42, 0x8D, 0x00, 0x30, 0x60, 1, 2, 3, 0xFF, 0x00, 0x55,
+];
+
+/// Run the Atom for this many seconds of emulated time.
+fn run_seconds(atom: &mut atom_rs::machine::Atom, seconds: u32) {
+    atom.run_cycles(seconds as u64 * 1_000_000);
+}
+
+#[test]
+fn save_to_tape_then_load_it_back() {
+    let Some(mut atom) = booted_atom(120) else {
+        return;
+    };
+    for (i, &byte) in DATA.iter().enumerate() {
+        assert!(atom.bus.poke(START + i as u16, byte));
+    }
+
+    // ---- Save ----
+    atom.bus.tape.recording = true;
+    type_text(&mut atom, "*SAVE \"TEST\" 2900 290C\n");
+    // Like the real machine, the Atom asks you to start the recorder first.
+    assert!(screen_string(&atom).contains("RECORD TAPE"));
+    type_text(&mut atom, "\n");
+    run_seconds(&mut atom, 25);
+    let tape = atom.bus.tape.finish_recording();
+    assert!(!tape.chunks.is_empty(), "nothing was written to the tape");
+
+    // The recording can be written as a UEF file and read back.
+    let tape = atom_rs::machine::tape::TapeImage::from_uef(&tape.to_uef()).unwrap();
+    let bytes: Vec<u8> = tape
+        .chunks
+        .iter()
+        .filter_map(|c| match c {
+            atom_rs::machine::tape::TapeChunk::Byte(b) => Some(*b),
+            _ => None,
+        })
+        .collect();
+    eprintln!("{} bytes on tape", bytes.len());
+    assert!(
+        bytes.windows(DATA.len()).any(|w| w == DATA),
+        "the saved data is not on the tape: {bytes:02X?}"
+    );
+
+    // ---- Wipe and load ----
+    for i in 0..DATA.len() {
+        atom.bus.poke(START + i as u16, 0);
+    }
+    atom.bus.tape.insert(tape);
+    type_text(&mut atom, "*LOAD \"TEST\"\n");
+    assert!(screen_string(&atom).contains("PLAY TAPE"));
+    // Press play on the recorder, then a key on the Atom.
+    atom.bus.tape.playing = true;
+    type_text(&mut atom, "\n");
+    run_seconds(&mut atom, 25);
+    eprintln!("{}", atom.screen_text().join("\n"));
+
+    let loaded: Vec<u8> = (0..DATA.len())
+        .map(|i| atom.bus.peek(START + i as u16))
+        .collect();
+    assert_eq!(loaded, DATA, "program was not loaded back from tape");
+}
