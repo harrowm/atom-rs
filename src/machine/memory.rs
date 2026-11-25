@@ -107,6 +107,26 @@ impl RamLayout {
 /// The video RAM window.
 const VIDEO_RAM: Range<u16> = 0x8000..0xA000;
 
+/// What the RAM holds when the Atom is switched on.
+///
+/// Real RAM chips power up with junk in them, and software relies on it: Atom
+/// BASIC keeps its `RND` seed in the zero page and never sets it, so a
+/// programme like Acornsoft's Asteroids, which places its rocks with `RND`,
+/// gets none at all if the seed starts as zero. A fixed pseudo-random pattern
+/// gives the same "junk" on every run, so the emulator stays repeatable.
+fn power_on_ram() -> [u8; 0x10000] {
+    let mut ram = [0; 0x10000];
+    let mut state: u32 = 0x2545_F491;
+    for byte in ram.iter_mut() {
+        // xorshift32: a few shifts and xors give a decent scramble.
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        *byte = (state >> 24) as u8;
+    }
+    ram
+}
+
 #[derive(Clone, Debug)]
 pub struct Memory {
     /// All of the RAM, video RAM included, as one 64 KiB array. Only the
@@ -121,7 +141,7 @@ pub struct Memory {
 impl Memory {
     pub fn new(layout: RamLayout) -> Self {
         Memory {
-            ram: Box::new([0; 0x10000]),
+            ram: Box::new(power_on_ram()),
             roms: Default::default(),
             layout,
             disk_interface_fitted: false,
@@ -190,6 +210,18 @@ mod tests {
         assert_eq!(memory.region(0xB401), Region::AtoMmc);
         assert_eq!(memory.region(0xC000), Region::Rom(RomSlot::Basic));
         assert_eq!(memory.region(0xFFFC), Region::Rom(RomSlot::Kernel));
+    }
+
+    #[test]
+    fn ram_powers_up_holding_junk_not_zeros() {
+        // The zero page holds BASIC's RND seed (08-0B), which must not be zero.
+        let memory = Memory::new(RamLayout::expanded());
+        assert!(memory.ram[8..12].iter().any(|&b| b != 0));
+        let zeros = memory.ram.iter().filter(|&&b| b == 0).count();
+        assert!(
+            zeros < 1000,
+            "{zeros} zero bytes out of 65536 looks like a blank memory"
+        );
     }
 
     #[test]

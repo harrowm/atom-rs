@@ -248,3 +248,43 @@ fn archive_menu_browses_the_sd_card_and_launches_a_game() {
 fn screen_has(atom: &Atom, text: &str) -> bool {
     atom.screen_text().iter().any(|row| row.contains(text))
 }
+
+const ASTEROIDS_DISK: &str = "testdata/games/asteroid.ssd";
+
+/// Acornsoft's Asteroids places its rocks with BASIC's `RND`, whose seed lives
+/// in the zero page and is never set. When the RAM started out all zeros the
+/// seed was zero, `RND` gave zero and no asteroids ever appeared.
+#[test]
+fn asteroids_has_asteroids() {
+    if !Path::new(ASTEROIDS_DISK).exists() {
+        eprintln!("SKIPPED: {ASTEROIDS_DISK} not found (./scripts/make_game.sh)");
+        return;
+    }
+    let Some(mut atom) = booted_atom(0) else {
+        return;
+    };
+    if !atom.bus.memory.disk_interface_fitted {
+        return;
+    }
+    atom.bus.fdc.drives[0] =
+        Some(DiskImage::from_bytes(std::fs::read(ASTEROIDS_DISK).unwrap(), 1).unwrap());
+    let mut typist = Typist::new();
+    typist.type_text("*DOS\n*RUN ASTEROI\n", 100);
+
+    // Once playing, the picture is the ship and score (about 50 lit pixels)
+    // plus the rocks. Look for the rocks over the first few seconds of play.
+    let playing = VideoMode::Graphics {
+        width: 256,
+        height: 192,
+        colours: 2,
+    };
+    assert!(
+        run_until(&mut atom, &mut typist, 3000, |a| a.video_mode() == playing),
+        "the game never started"
+    );
+    assert!(
+        run_until(&mut atom, &mut typist, 300, |a| lit_pixels(a) > 100),
+        "no asteroids: only {} lit pixels",
+        lit_pixels(&atom)
+    );
+}

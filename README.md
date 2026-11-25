@@ -131,7 +131,7 @@ cargo run --release -- --disk testdata/games/jsw.ssd --run 'LOAD "JSWRUN"\nRUN\n
 | Frogger | `frogger` | `'*RUN FROGGER\n'` | **T** up, **B** down, **F** left, **H** right. |
 | Galaxians | `galaxian` | `'*RUN GALAXIA\n'` | Press **A** for one player or **B** for two. Then **LOCK** moves left (the **`** key, or Caps Lock), **Shift** moves right, **Alt/Option** (the Atom's REPT) fires. |
 | Space Invaders | `invaders` | `'*RUN INVADER\n'` | Starts at a "PLAY SPACE INVADERS" screen. |
-| Asteroids | `asteroid` | `'*RUN ASTEROI\n'` | |
+| Asteroids (Acornsoft) | `asteroid` | `'*RUN ASTEROI\n'` | Left Shift and Ctrl turn the ship, Return fires, Rept thrusts (checked by holding each key and watching the picture change) |
 | Breakout | `breakout` | `'*RUN BREAKOU\n'` | **Shift** left, **Alt/Option** (REPT) right, **Ctrl** to serve and to start. |
 
 A few notes:
