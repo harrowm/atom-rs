@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Downloads the external 6502 test suites into testdata/ (git-ignored).
 #
-#   testdata/65x02/            SingleStepTests: per-opcode JSON, cycle-by-cycle
+#   testdata/65x02/            SingleStepTests (6502/v1 only): per-opcode JSON,
+#                              cycle-by-cycle
 #   testdata/6502_65C02_functional_tests/   Klaus Dormann's functional tests
 #   testdata/amb5l_ca65/       ca65 port of Dormann's sources; we build the
 #                              decimal test from it (needs `brew install cc65`)
@@ -19,7 +20,15 @@ clone() { # clone <url> <dir>: shallow clone, or update if already present
     fi
 }
 
-clone https://github.com/SingleStepTests/65x02.git testdata/65x02
+# The SingleStepTests repo is 5.7 GB, covering many CPU variants, but only the
+# plain 6502 folder (1 GB, about 190 MB to download) is used, so fetch only that.
+if [ ! -d testdata/65x02/.git ]; then
+    git clone --depth 1 --filter=blob:none --sparse \
+        https://github.com/SingleStepTests/65x02.git testdata/65x02
+    git -C testdata/65x02 sparse-checkout set 6502/v1
+else
+    git -C testdata/65x02 pull --ff-only
+fi
 clone https://github.com/Klaus2m5/6502_65C02_functional_tests.git \
     testdata/6502_65C02_functional_tests
 

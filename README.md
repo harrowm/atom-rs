@@ -1,5 +1,9 @@
 # atom-rs: an Acorn Atom emulator in Rust
 
+[![CI](https://github.com/harrowm/atom-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/harrowm/atom-rs/actions/workflows/ci.yml)
+[![Licence: GPL v2](https://img.shields.io/badge/licence-GPL--2.0--only-blue.svg)](LICENSE)
+![Rust 2024](https://img.shields.io/badge/rust-2024%20edition-orange.svg)
+
 A cycle-accurate emulator of the Acorn Atom (1980), written as a learning
 project. The code is meant to be read: small modules, one idea per function,
 and comments that explain the hardware being modelled.
@@ -40,11 +44,12 @@ See [`plan.md`](plan.md) for the roadmap and design notes.
   echo 'export PATH=/opt/homebrew/opt/rustup/bin:$PATH' >> ~/.zshrc
   source ~/.zshrc
   ```
-* Atom ROM images in `roms/` (git-ignored): `akernel.rom`, `abasic.rom` and
+* The Atom ROM images are in `roms/` (see [the ROMs](#the-roms) below), so
+  there is nothing to fetch. A different set can be used with
+  `cargo run --release -- /path/to/roms`. `akernel.rom`, `abasic.rom` and
   `afloat.rom` are required; `axr1.rom` (utility) and `dosrom.rom` (disk) are
-  optional. Without `dosrom.rom` there is no disk interface. `ramrom.rom`
-  (128K, also in Atomulator's `roms/` folder) is only needed for the SD card
-  mode below. Atomulator's repository ships a set in its `roms/` folder.
+  optional, and without `dosrom.rom` there is no disk interface. `ramrom.rom`
+  and `mmc_eeprom.rom` are only needed for the SD card mode.
 * Optional, for the full test suite: `git`, `curl`, and `cc65`
   (`brew install cc65`) to build the decimal-mode test.
 
@@ -329,10 +334,20 @@ The big CPU tests need external data, which is not stored in this repository:
 ./scripts/fetch_tests.sh
 ```
 
-This downloads the SingleStepTests (about 5 GB) and Dormann's tests into
-`testdata/`, builds the decimal test with `ca65` if it is installed, and fetches
-a prebuilt interrupt test. Tests that cannot find their data print `SKIPPED`
-and pass, so a plain `cargo test` always works.
+This downloads the plain-6502 part of the SingleStepTests (about 190 MB to
+download, 1 GB on disk) and Dormann's tests into `testdata/`, builds the decimal
+test with `ca65` if it is installed, and fetches a prebuilt interrupt test.
+Tests that cannot find their data print `SKIPPED` and pass, so a plain
+`cargo test` always works. Set `REQUIRE_TEST_DATA=1` to make them fail instead.
+
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `cargo fmt --check`, clippy and
+the whole test suite on every push and pull request, with `REQUIRE_TEST_DATA=1`
+so that a green tick always means the tests really ran. It downloads the test
+data as above (the 1 GB of SingleStepTests is kept in the Actions cache), and
+also fetches the software archive and builds the game disks, so the tests that
+play Chuckie Egg, Repton and Asteroids and browse the SD card run there too.
 
 ## Benchmarks
 
@@ -389,5 +404,16 @@ states "licensed under the GPL" and ships the version 2 text, with no
 "or later" grant, so this project does the same.
 
 The test suites downloaded by `scripts/fetch_tests.sh` are not part of this
-repository and keep their own licences. The Atom ROMs are Acorn's and are not
-included.
+repository and keep their own licences.
+
+### The ROMs
+
+The files in `roms/` are **not** covered by this project's licence and are not
+my work. They are the Acorn Atom's system ROMs (operating system, BASIC,
+floating point, disk filing system and utility ROM), which are copyright
+Acorn Computers, and the AtoMMC and SDDOS ROMs (SDDOS is by Kees van Oss) in
+the 128K `ramrom.rom` image. All of them are copied unchanged from the
+[Atomulator](https://github.com/hoglet67/Atomulator) repository, which has
+distributed them for years so that the emulator can run. They are here for the
+same reason: without them an Atom emulator cannot start. If you hold the rights
+to any of them and would like one removed, please open an issue and it will be.

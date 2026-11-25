@@ -9,6 +9,8 @@
 //!
 //! Get the data with `scripts/fetch_tests.sh`.
 
+mod common;
+
 use std::path::Path;
 
 use atom_rs::cpu::{Bus, Cpu, RamBus};
@@ -46,7 +48,9 @@ fn run_until_trap(bus: &mut impl Bus, cpu_start: u16) -> (u16, u64) {
 fn functional_test() {
     let image = Path::new(TEST_DIR).join("6502_functional_test.bin");
     if !image.exists() {
-        eprintln!("SKIPPED: {image:?} not found. Run scripts/fetch_tests.sh first.");
+        common::skipped(format!(
+            "{image:?} not found. Run scripts/fetch_tests.sh first."
+        ));
         return;
     }
     // Entry point and success address come from the assembler listing
@@ -73,7 +77,9 @@ fn functional_test() {
 fn decimal_test() {
     let image = Path::new("testdata/amb5l_ca65/ca65/6502_decimal_test.bin");
     if !image.exists() {
-        eprintln!("SKIPPED: {image:?} not found. Run scripts/fetch_tests.sh (needs ca65).");
+        common::skipped(format!(
+            "{image:?} not found. Run scripts/fetch_tests.sh (needs ca65)."
+        ));
         return;
     }
     const START: u16 = 0x0400;
@@ -146,7 +152,9 @@ impl Bus for InterruptTestBus {
 fn interrupt_test() {
     let image = Path::new("testdata/mre_interrupt/6502_interrupt_test.bin");
     if !image.exists() {
-        eprintln!("SKIPPED: {image:?} not found. Run scripts/fetch_tests.sh first.");
+        common::skipped(format!(
+            "{image:?} not found. Run scripts/fetch_tests.sh first."
+        ));
         return;
     }
     const START: u16 = 0x0400;

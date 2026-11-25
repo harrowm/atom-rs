@@ -11,6 +11,8 @@
 //! OPCODE=a9 cargo test --test single_step -- --nocapture
 //! ```
 
+mod common;
+
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -148,7 +150,9 @@ fn run_opcode(opcode: u8) -> (usize, Option<String>) {
 #[test]
 fn single_step_tests() {
     if !Path::new(TEST_DIR).exists() {
-        eprintln!("SKIPPED: {TEST_DIR} not found. Run scripts/fetch_tests.sh first.");
+        common::skipped(format!(
+            "{TEST_DIR} not found. Run scripts/fetch_tests.sh first."
+        ));
         return;
     }
 

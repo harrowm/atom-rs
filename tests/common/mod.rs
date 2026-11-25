@@ -8,10 +8,22 @@ use atom_rs::machine::keyboard::{find_key, key_for_char};
 
 pub const ROM_DIR: &str = "roms";
 
+/// Say a test could not run because some data it needs is missing, and let it
+/// pass, so the suite works on a machine without the (large, downloaded) test
+/// data. On a continuous-integration server set `REQUIRE_TEST_DATA=1`: then a
+/// missing file is a failure, so a green result always means the tests ran.
+pub fn skipped(reason: impl std::fmt::Display) {
+    assert!(
+        std::env::var_os("REQUIRE_TEST_DATA").is_none(),
+        "test data missing, and REQUIRE_TEST_DATA is set: {reason}"
+    );
+    eprintln!("SKIPPED: {reason}");
+}
+
 /// An Atom that has booted to the prompt, or `None` if there are no ROMs.
 pub fn booted_atom(frames: u32) -> Option<Atom> {
     if !Path::new(ROM_DIR).join("akernel.rom").exists() {
-        eprintln!("SKIPPED: no ROMs in {ROM_DIR}/");
+        skipped(format!("no ROMs in {ROM_DIR}/"));
         return None;
     }
     let mut atom = Atom::new();

@@ -46,7 +46,7 @@ impl Drop for Card {
 /// An Atom with an AtoMMC whose card is `folder`, or `None` without the ROMs.
 fn atom_with_card(folder: &Path) -> Option<Atom> {
     if !Path::new(ROM_DIR).join("ramrom.rom").exists() {
-        eprintln!("SKIPPED: no roms/ramrom.rom");
+        common::skipped("no roms/ramrom.rom");
         return None;
     }
     let mut atom = Atom::new();

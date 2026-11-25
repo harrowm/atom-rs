@@ -1,0 +1,71 @@
+# Runs on every push and pull request: formatting, lints, and the whole test
+# suite, including the 6502 CPU test suites and games from the software archive.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # A test whose data is missing must FAIL here, not quietly skip, or a green
+  # tick could mean "nothing ran". (See tests/common/mod.rs.)
+  REQUIRE_TEST_DATA: "1"
+
+defaults:
+  run:
+    shell: bash # so a failure inside a pipe (`cargo test | tee`) fails the step
+
+jobs:
+  lint:
+    name: Format and lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install system libraries (sound)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system libraries (sound) and cc65 (builds the decimal test)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev cc65
+      - uses: Swatinem/rust-cache@v2
+
+      # The SingleStepTests are about 1 GB. Keep them in the cache, keyed on the
+      # upstream commit, so they are downloaded once and again only when the
+      # upstream tests change.
+      - name: Find the current SingleStepTests commit
+        id: singlestep
+        run: echo "sha=$(git ls-remote https://github.com/SingleStepTests/65x02 HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+      - name: Cache the SingleStepTests
+        uses: actions/cache@v4
+        with:
+          path: testdata/65x02
+          key: singlestep-${{ steps.singlestep.outputs.sha }}
+
+      - name: Get the CPU test suites
+        run: ./scripts/fetch_tests.sh
+      - name: Get the software archive and build the game disks the tests use
+        run: ./scripts/make_all_games.sh
+
+      - name: Run the tests
+        run: cargo test --no-fail-fast 2>&1 | tee test.log
+
+      - name: Summarise
+        if: always()
+        run: |
+          awk '/^test result/ { passed += $4; failed += $6 }
+               END { printf "### Tests\n\n**%d passed**, %d failed\n", passed, failed }' \
+            test.log >> "$GITHUB_STEP_SUMMARY"

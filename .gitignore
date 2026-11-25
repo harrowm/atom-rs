@@ -1,4 +1,3 @@
 /target
-# External test data (see scripts/fetch_tests.sh) and user-supplied ROMs
+# External test data (see scripts/fetch_tests.sh)
 /testdata
-/roms

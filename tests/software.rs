@@ -19,14 +19,14 @@ const DISK: &str = "testdata/games/chuckie.ssd";
 #[test]
 fn chuckie_egg_menu_and_game_start() {
     if !Path::new(DISK).exists() {
-        eprintln!("SKIPPED: {DISK} not found (run scripts/make_chuckie.sh)");
+        common::skipped(format!("{DISK} not found (run scripts/make_chuckie.sh)"));
         return;
     }
     let Some(mut atom) = booted_atom(0) else {
         return;
     };
     if !atom.bus.memory.disk_interface_fitted {
-        eprintln!("SKIPPED: no dosrom.rom");
+        common::skipped("no dosrom.rom");
         return;
     }
     // Log anything the game touches that the machine does not provide.
@@ -132,7 +132,9 @@ fn hold_key(atom: &mut Atom, name: &str, frames: u32) {
 #[test]
 fn repton_responds_to_the_direction_keys() {
     if !Path::new(REPTON_DISK).exists() {
-        eprintln!("SKIPPED: {REPTON_DISK} not found (./scripts/make_game.sh RS/REPTON repton)");
+        common::skipped(format!(
+            "{REPTON_DISK} not found (./scripts/make_game.sh RS/REPTON repton)"
+        ));
         return;
     }
     let Some(mut atom) = booted_atom(0) else {
@@ -189,7 +191,7 @@ const ARCHIVE: &str = "testdata/asa_v13_01/files";
 #[test]
 fn archive_menu_browses_the_sd_card_and_launches_a_game() {
     if !Path::new(ARCHIVE).join("MENU").exists() || !Path::new("roms/ramrom.rom").exists() {
-        eprintln!("SKIPPED: needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
+        common::skipped("needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
         return;
     }
     let mut atom = Atom::new();
@@ -257,7 +259,9 @@ const ASTEROIDS_DISK: &str = "testdata/games/asteroid.ssd";
 #[test]
 fn asteroids_has_asteroids() {
     if !Path::new(ASTEROIDS_DISK).exists() {
-        eprintln!("SKIPPED: {ASTEROIDS_DISK} not found (./scripts/make_game.sh)");
+        common::skipped(format!(
+            "{ASTEROIDS_DISK} not found (./scripts/make_game.sh)"
+        ));
         return;
     }
     let Some(mut atom) = booted_atom(0) else {

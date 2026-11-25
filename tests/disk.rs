@@ -50,7 +50,7 @@ fn disk_with_one_file() -> DiskImage {
 fn atom_with_disk(disk: DiskImage) -> Option<Atom> {
     let mut atom = booted_atom(120)?;
     if !atom.bus.memory.disk_interface_fitted {
-        eprintln!("SKIPPED: no dosrom.rom");
+        common::skipped("no dosrom.rom");
         return None;
     }
     atom.bus.fdc.drives[0] = Some(disk);
