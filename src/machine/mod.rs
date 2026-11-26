@@ -9,6 +9,7 @@ pub mod atommc;
 pub mod autoplay;
 pub mod debug;
 pub mod disk;
+pub mod fdc1770;
 pub mod fdc8271;
 pub mod font;
 pub mod joystick;

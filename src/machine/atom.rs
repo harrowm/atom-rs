@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use super::atm::AtmFile;
 use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
+use super::fdc1770::Fdc1770;
 use super::fdc8271::Fdc8271;
 use super::joystick::Joystick;
 use super::memory::{Memory, RamPreset, Region, RomSlot, open_bus};
@@ -44,6 +45,8 @@ pub struct AtomBus {
     pub tape: Tape,
     /// The disk controller (reachable once a disk ROM is loaded).
     pub fdc: Fdc8271,
+    /// The GDOS disk system's controller (reachable once GDOS is fitted).
+    pub fdc1770: Fdc1770,
     /// The AtoMMC's joystick port (the SD card itself is not emulated).
     pub atommc: AtoMmc,
     pub(super) fdc_nmi_was_asserted: bool,
@@ -68,6 +71,7 @@ impl AtomBus {
             sid: SidCard::new(44_100),
             tape: Tape::new(),
             fdc: Fdc8271::new(),
+            fdc1770: Fdc1770::new(),
             atommc: AtoMmc::default(),
             fdc_nmi_was_asserted: false,
             debug: Debugger::default(),
@@ -90,9 +94,10 @@ impl AtomBus {
             self.sound.add_to_last_sample(sid_level);
         }
         self.fdc.tick();
+        self.fdc1770.tick(&mut self.fdc.drives);
         // The controller's NMI output is level-sensitive, the CPU's input is
         // edge-sensitive: remember each time it goes active.
-        let fdc_nmi = self.fdc.nmi_asserted();
+        let fdc_nmi = self.fdc.nmi_asserted() || self.fdc1770.nmi_asserted();
         if fdc_nmi && !self.fdc_nmi_was_asserted {
             self.nmi_edge = true;
         }
@@ -129,6 +134,7 @@ impl AtomBus {
         self.ppi.reset();
         self.via = Via::new();
         self.fdc.reset();
+        self.fdc1770.reset();
         self.atommc.reset();
         self.sid.reset();
         self.nmi_edge = false;
@@ -155,9 +161,12 @@ impl AtomBus {
             Region::Rom(slot) => self.memory.read_rom(slot, addr),
             Region::Sid => self.sid.read(addr),
             Region::RamRom => self.read_board_register(addr),
-            Region::Ppi | Region::Via | Region::Fdc | Region::AtoMmc | Region::Unmapped => {
-                open_bus(addr)
-            }
+            Region::Ppi
+            | Region::Via
+            | Region::Fdc
+            | Region::Gdos1770
+            | Region::AtoMmc
+            | Region::Unmapped => open_bus(addr),
         }
     }
 }
@@ -177,6 +186,7 @@ impl Bus for AtomBus {
             Region::AtoMmc => self.atommc.read(addr),
             Region::Sid => self.sid.read(addr),
             Region::RamRom => self.read_board_register(addr),
+            Region::Gdos1770 => self.fdc1770.read(addr),
             Region::Unmapped => {
                 if self.debug.log_unmapped {
                     self.debug.note_unmapped(addr, false);
@@ -198,6 +208,7 @@ impl Bus for AtomBus {
             Region::Fdc => self.fdc.write(addr, value),
             Region::AtoMmc => self.atommc.write(addr, value),
             Region::Sid => self.sid.write(addr, value),
+            Region::Gdos1770 => self.fdc1770.write(addr, value, &mut self.fdc.drives),
             Region::RamRom => {
                 if let Some(board) = &mut self.memory.board {
                     board.write_register(addr, value);
@@ -269,6 +280,7 @@ impl Atom {
     pub fn use_floppy_disks(&mut self, rom_dir: &Path) -> Result<(), String> {
         self.load_roms(rom_dir)?;
         self.bus.memory.board = None;
+        self.bus.memory.remove_gdos();
         self.bus.memory.set_ram_preset(RamPreset::With22KExpansion);
         self.bus.atommc.remove_card();
         self.reset();
@@ -298,6 +310,30 @@ impl Atom {
         memory.board = Some(board);
         memory.set_ram_preset(RamPreset::With23KExpansion);
         Ok(())
+    }
+
+    /// Fit the GDOS/ADOS 2015 disk system: a WD1770 disk controller (at
+    /// `BC10`) and its ROM, in place of the standard Atom DOS and 8271 (the
+    /// disks in the drives are shared). The ROM, `gdos2015.rom`, must be in
+    /// `rom_dir`. Not available in SD card or BBC mode, which replace the
+    /// disk ROM themselves. Restarts the Atom.
+    pub fn use_gdos(&mut self, rom_dir: &Path) -> Result<(), String> {
+        if self.bus.memory.board.is_some() {
+            return Err("GDOS is for the floppy disk Atom, not SD card or BBC mode".to_string());
+        }
+        let path = rom_dir.join("gdos2015.rom");
+        let image = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.bus
+            .memory
+            .install_gdos(&image)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        self.reset();
+        Ok(())
+    }
+
+    /// Is the GDOS disk system fitted?
+    pub fn gdos_active(&self) -> bool {
+        self.bus.memory.gdos_fitted()
     }
 
     /// Is this a BBC BASIC machine? (See [`Atom::set_bbc_basic`].)
@@ -665,6 +701,66 @@ mod tests {
         atom.bus.memory.set_video_ram_kb(8);
         atom.load_state(&state).unwrap();
         assert_eq!(atom.bus.memory.video_ram_kb(), 3);
+    }
+
+    /// A 64K GDOS ROM in which bank `n` is full of `n`.
+    fn numbered_gdos_rom() -> Vec<u8> {
+        (0..crate::machine::memory::GDOS_IMAGE_SIZE)
+            .map(|i| (i / 0x1000) as u8)
+            .collect()
+    }
+
+    #[test]
+    fn the_gdos_controller_is_on_the_bus_only_when_gdos_is_fitted() {
+        let mut atom = Atom::new();
+        atom.bus.write(0xBC11, 0x55);
+        assert_eq!(atom.bus.read(0xBC11), 0xBC, "no GDOS: open bus");
+
+        atom.bus.memory.install_gdos(&numbered_gdos_rom()).unwrap();
+        atom.bus.write(0xBC11, 0x55); // the track register
+        assert_eq!(atom.bus.read(0xBC11), 0x55);
+        atom.bus.write(0xBC12, 0x07); // the sector register
+        assert_eq!(atom.bus.read(0xBC12), 0x07);
+    }
+
+    #[test]
+    fn the_gdos_rom_replaces_the_disk_rom_and_its_bank_can_be_chosen() {
+        let mut atom = Atom::new();
+        atom.bus.memory.install_gdos(&numbered_gdos_rom()).unwrap();
+        assert_eq!(atom.bus.read(0xE123), 0, "bank 0");
+        atom.bus.memory.set_gdos_bank(5);
+        assert_eq!(atom.bus.read(0xE123), 5);
+        atom.bus.memory.set_gdos_bank(21);
+        assert_eq!(atom.bus.memory.gdos_bank(), 5, "21 wraps to 5 of 16");
+        atom.bus.memory.remove_gdos();
+        assert_eq!(
+            atom.bus.read(0xE123),
+            0xE1,
+            "open bus again, nothing in the socket"
+        );
+    }
+
+    #[test]
+    fn a_finished_gdos_command_interrupts_the_cpu_with_an_nmi() {
+        let mut atom = Atom::new();
+        atom.bus.memory.install_gdos(&numbered_gdos_rom()).unwrap();
+        atom.bus.write(0xBC10, 0x00); // restore
+        // The command takes a while; every access is one cycle.
+        let mut interrupted = false;
+        for _ in 0..5000 {
+            atom.bus.read(0x0000);
+            if atom.bus.take_nmi_edge() {
+                interrupted = true;
+                break;
+            }
+        }
+        assert!(interrupted, "no NMI when the restore finished");
+    }
+
+    #[test]
+    fn gdos_cannot_be_fitted_with_the_ram_rom_board() {
+        let mut atom = atom_with_a_numbered_board(0);
+        assert!(atom.use_gdos(Path::new("no-such-folder")).is_err());
     }
 
     #[test]

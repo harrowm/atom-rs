@@ -66,6 +66,8 @@ pub enum Region {
     Fdc,
     AtoMmc,
     Sid,
+    /// The WD1770 disk controller's registers (`BC10-BC14`), with GDOS.
+    Gdos1770,
     /// The RAM/ROM board's three registers (`BFFD-BFFF`) and the rest of that page.
     RamRom,
     Ppi,
@@ -186,7 +188,22 @@ pub struct Memory {
     /// How much of the video RAM window (`8000-9FFF`) has RAM behind it, in
     /// K (1 to 8). Beyond it nothing answers.
     video_ram_kb: u8,
+    /// The GDOS ROM, if the GDOS disk system is fitted (see [`GdosRom`]).
+    gdos: Option<GdosRom>,
 }
+
+/// The GDOS/ADOS 2015 disk ROM: sixteen 4K banks, one of which shows in the
+/// disk ROM socket at `E000`. (Atomulator chooses the bank from its menu, and
+/// so do we.)
+#[derive(Clone, Debug)]
+struct GdosRom {
+    image: Box<[u8; GDOS_IMAGE_SIZE]>,
+    bank: u8,
+}
+
+/// Sixteen 4K banks.
+pub const GDOS_IMAGE_SIZE: usize = 0x10000;
+pub const GDOS_BANKS: u8 = 16;
 
 impl Memory {
     pub fn new(preset: RamPreset) -> Self {
@@ -198,6 +215,7 @@ impl Memory {
             sid_fitted: true,
             board: None,
             video_ram_kb: MAX_VIDEO_RAM_KB,
+            gdos: None,
         }
     }
 
@@ -259,6 +277,7 @@ impl Memory {
             0xB000..=0xB3FF => Region::Ppi,
             0xB400..=0xB7FF => Region::AtoMmc,
             0xB800..=0xBBFF => Region::Via,
+            0xBC10..=0xBC14 if self.gdos.is_some() => Region::Gdos1770,
             0xBDC0..=0xBDDF if self.sid_fitted => Region::Sid,
             0xBC00..=0xBFFF if self.board.is_some() => Region::RamRom,
             0xC000..=0xCFFF => Region::Rom(RomSlot::Basic),
@@ -267,6 +286,34 @@ impl Memory {
             0xF000..=0xFFFF => Region::Rom(RomSlot::Kernel),
             _ => Region::Unmapped,
         }
+    }
+
+    /// Fit the GDOS disk system: `image` is the 64K ROM, 16 banks of 4K.
+    pub fn install_gdos(&mut self, image: &[u8]) -> Result<(), String> {
+        let image: Box<[u8; GDOS_IMAGE_SIZE]> = Box::<[u8]>::from(image)
+            .try_into()
+            .map_err(|_| format!("the GDOS ROM must be {GDOS_IMAGE_SIZE} bytes"))?;
+        self.gdos = Some(GdosRom { image, bank: 0 });
+        Ok(())
+    }
+
+    pub fn remove_gdos(&mut self) {
+        self.gdos = None;
+    }
+
+    pub fn gdos_fitted(&self) -> bool {
+        self.gdos.is_some()
+    }
+
+    /// Choose which of the GDOS ROM's banks is in the socket.
+    pub fn set_gdos_bank(&mut self, bank: u8) {
+        if let Some(gdos) = &mut self.gdos {
+            gdos.bank = bank % GDOS_BANKS;
+        }
+    }
+
+    pub fn gdos_bank(&self) -> u8 {
+        self.gdos.as_ref().map_or(0, |gdos| gdos.bank)
     }
 
     /// In BBC mode the board copies two ROMs into RAM at `6000` and `7000`.
@@ -303,6 +350,13 @@ impl Memory {
             if let Some(byte) = board.read_rom(slot, addr) {
                 return byte;
             }
+        }
+        // With the GDOS disk system, its ROM is the disk ROM.
+        if slot == RomSlot::Disk
+            && self.board.is_none()
+            && let Some(gdos) = &self.gdos
+        {
+            return gdos.image[usize::from(gdos.bank) * ROM_SIZE + usize::from(addr) % ROM_SIZE];
         }
         match &self.roms[slot.index()] {
             Some(rom) => rom[addr as usize & (ROM_SIZE - 1)],

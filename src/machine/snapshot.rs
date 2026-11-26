@@ -116,6 +116,8 @@ impl Atom {
         {
             board.set_registers(bank, flags);
         }
+        // The GDOS disk controller's state is not saved: it starts idle.
+        bus.fdc1770.reset();
         // The SID chip's state is not saved: it starts silent.
         bus.sid.reset();
         bus.cycles = snapshot.cycles;

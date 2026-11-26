@@ -328,6 +328,20 @@ bare 1K Atom BASIC keeps its programs in the spare video RAM (type `PRINT TOP`:
 Many programs need the larger sizes. In SD card mode the choice is not available:
 the RAM/ROM board provides RAM everywhere.
 
+### GDOS/ADOS 2015 (WD1770 disks)
+
+**Hardware > GDOS/ADOS 2015** fits the other disk system the Atom had: a
+Western Digital WD1770 controller (at `BC10`) with the GDOS/ADOS ROM, instead of
+the standard Intel 8271 and Atom DOS. The same disk images (`--disk`, or *Disks*
+below) work in it. Type `*DOS` to start it (it answers `ADOS-1770 BC10:1000`),
+then `*.`, `*LOAD`, `*SAVE` and so on as usual; a game such as Chuckie Egg loads
+through it. The ROM has 16 banks of 4K, chosen under **GDOS ROM bank**; this is
+chosen from the menu as in Atomulator. It needs `roms/gdos2015.rom`, and is only
+for the floppy disk Atom (not SD card or BBC mode, which supply their own disk
+ROM). Written at the level of whole sectors with simple timing: it does not model
+the disk's rotation or CRC errors, and formatting clears the track without
+laying out the sectors.
+
 ### BBC BASIC
 
 **Hardware > BBC BASIC board** restarts the Atom as a BBC BASIC machine. The
@@ -514,8 +528,9 @@ repository and keep their own licences.
 The files in `roms/` are **not** covered by this project's licence and are not
 my work. They are the Acorn Atom's system ROMs (operating system, BASIC,
 floating point, disk filing system and utility ROM), which are copyright
-Acorn Computers, and the AtoMMC and SDDOS ROMs (SDDOS is by Kees van Oss) in
-the 128K `ramrom.rom` image. All of them are copied unchanged from the
+Acorn Computers, the AtoMMC and SDDOS ROMs (SDDOS is by Kees van Oss) and the
+BBC BASIC ROMs in the 128K `ramrom.rom` image, and the GDOS/ADOS 2015 ROM
+(`gdos2015.rom`). All of them are copied unchanged from the
 [Atomulator](https://github.com/hoglet67/Atomulator) repository, which has
 distributed them for years so that the emulator can run. They are here for the
 same reason: without them an Atom emulator cannot start. If you hold the rights

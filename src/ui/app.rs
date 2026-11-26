@@ -17,7 +17,7 @@ use atom_rs::machine::debug::StopReason;
 use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
-use atom_rs::machine::memory::{MAX_VIDEO_RAM_KB, RamPreset, RomSlot};
+use atom_rs::machine::memory::{GDOS_BANKS, MAX_VIDEO_RAM_KB, RamPreset, RomSlot};
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
 use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
@@ -898,6 +898,36 @@ impl AtomApp {
             ui.menu_button("Hardware", |ui| {
                 ui.checkbox(&mut self.colour_board, "Colour board");
                 self.atom.bus.framebuffer.monochrome = !self.colour_board;
+                let board_fitted = self.atom.bus.memory.board.is_some();
+                let mut gdos = self.atom.gdos_active();
+                if ui
+                    .add_enabled(
+                        !board_fitted,
+                        egui::Checkbox::new(&mut gdos, "GDOS/ADOS 2015 (WD1770 disks)"),
+                    )
+                    .on_hover_text("Restarts the Atom with the GDOS disk system")
+                    .clicked()
+                {
+                    self.notice = if gdos {
+                        self.atom.use_gdos(&self.rom_dir).err()
+                    } else {
+                        self.atom.use_floppy_disks(&self.rom_dir).err()
+                    };
+                }
+                ui.add_enabled_ui(self.atom.gdos_active(), |ui| {
+                    ui.menu_button("GDOS ROM bank", |ui| {
+                        let current = self.atom.bus.memory.gdos_bank();
+                        for bank in 0..GDOS_BANKS {
+                            let choice =
+                                egui::RadioButton::new(current == bank, format!("Bank {bank:02}"));
+                            if ui.add(choice).clicked() {
+                                self.atom.bus.memory.set_gdos_bank(bank);
+                                self.atom.reset();
+                                ui.close();
+                            }
+                        }
+                    });
+                });
                 let mut bbc = self.atom.bbc_basic_active();
                 if ui
                     .checkbox(&mut bbc, "BBC BASIC board")
