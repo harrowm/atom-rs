@@ -591,6 +591,39 @@ mod tests {
     }
 
     #[test]
+    fn writes_beyond_the_fitted_video_ram_are_lost_and_reads_see_open_bus() {
+        let mut atom = Atom::new();
+        atom.bus.write(0x8400, 0x55);
+        assert_eq!(atom.bus.read(0x8400), 0x55, "8K: there");
+
+        atom.bus.memory.set_video_ram_kb(1);
+        atom.bus.write(0x8200, 0x66);
+        assert_eq!(atom.bus.read(0x8200), 0x66, "inside the first 1K");
+        atom.bus.write(0x8400, 0x77);
+        assert_eq!(
+            atom.bus.read(0x8400),
+            0x84,
+            "nothing there: the address high byte"
+        );
+        atom.bus.memory.set_video_ram_kb(8);
+        assert_eq!(
+            atom.bus.read(0x8400),
+            0x55,
+            "and the old contents were not touched"
+        );
+    }
+
+    #[test]
+    fn a_saved_state_remembers_the_video_ram_size() {
+        let mut atom = Atom::new();
+        atom.bus.memory.set_video_ram_kb(3);
+        let state = atom.save_state().unwrap();
+        atom.bus.memory.set_video_ram_kb(8);
+        atom.load_state(&state).unwrap();
+        assert_eq!(atom.bus.memory.video_ram_kb(), 3);
+    }
+
+    #[test]
     fn a_joystick_is_seen_through_the_atommc_port() {
         let mut atom = Atom::new();
         // No stick plugged in: software reads 0, "no joystick".

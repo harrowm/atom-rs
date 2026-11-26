@@ -142,6 +142,9 @@ impl RamPreset {
     }
 }
 
+/// The biggest video RAM: the whole `8000-9FFF` window.
+pub const MAX_VIDEO_RAM_KB: u8 = 8;
+
 /// The video RAM window.
 const VIDEO_RAM: Range<u16> = 0x8000..0xA000;
 
@@ -180,6 +183,9 @@ pub struct Memory {
     /// The Ramoth RAM/ROM board, if fitted. It takes over the ROM sockets, the
     /// page at `0A00` and the top of the I/O page (see [`RamRomBoard`]).
     pub board: Option<RamRomBoard>,
+    /// How much of the video RAM window (`8000-9FFF`) has RAM behind it, in
+    /// K (1 to 8). Beyond it nothing answers.
+    video_ram_kb: u8,
 }
 
 impl Memory {
@@ -191,6 +197,7 @@ impl Memory {
             disk_interface_fitted: false,
             sid_fitted: true,
             board: None,
+            video_ram_kb: MAX_VIDEO_RAM_KB,
         }
     }
 
@@ -201,6 +208,22 @@ impl Memory {
 
     pub fn ram_preset(&self) -> RamPreset {
         self.preset
+    }
+
+    /// Fit 1 to 8K of video RAM (more or less is clamped). Which video modes
+    /// the picture can show depends on it: the text screen needs half a K,
+    /// the biggest graphics mode 6K.
+    pub fn set_video_ram_kb(&mut self, kb: u8) {
+        self.video_ram_kb = kb.clamp(1, MAX_VIDEO_RAM_KB);
+    }
+
+    pub fn video_ram_kb(&self) -> u8 {
+        self.video_ram_kb
+    }
+
+    /// The first address above the video RAM that is fitted.
+    fn video_ram_top(&self) -> u16 {
+        0x8000 + u16::from(self.video_ram_kb) * 0x400
     }
 
     pub fn load_rom(&mut self, slot: RomSlot, data: &[u8]) -> Result<(), String> {
@@ -231,7 +254,7 @@ impl Memory {
             0x0A00..=0x0AFF if self.board_selects_floppy_controller() => Region::Fdc,
             0x0000..=0x7FFF if self.preset.contains(addr) => Region::Ram,
             0x0A00..=0x0AFF if self.board.is_none() && self.disk_interface_fitted => Region::Fdc,
-            a if VIDEO_RAM.contains(&a) => Region::VideoRam,
+            a if VIDEO_RAM.contains(&a) && a < self.video_ram_top() => Region::VideoRam,
             0xA000..=0xAFFF => Region::Rom(RomSlot::Utility),
             0xB000..=0xB3FF => Region::Ppi,
             0xB400..=0xB7FF => Region::AtoMmc,
@@ -376,6 +399,24 @@ mod tests {
             };
             assert_eq!(memory.region(0x0A00), expected, "{preset:?}");
         }
+    }
+
+    #[test]
+    fn video_ram_beyond_the_fitted_amount_does_not_answer() {
+        let mut memory = Memory::new(RamPreset::default());
+        assert_eq!(memory.video_ram_kb(), 8, "all of it by default");
+        assert_eq!(memory.region(0x9FFF), Region::VideoRam);
+
+        memory.set_video_ram_kb(2);
+        assert_eq!(memory.region(0x8000), Region::VideoRam);
+        assert_eq!(memory.region(0x87FF), Region::VideoRam);
+        assert_eq!(memory.region(0x8800), Region::Unmapped);
+        assert_eq!(memory.region(0x9FFF), Region::Unmapped);
+
+        memory.set_video_ram_kb(0);
+        assert_eq!(memory.video_ram_kb(), 1, "at least 1K");
+        memory.set_video_ram_kb(99);
+        assert_eq!(memory.video_ram_kb(), 8, "at most 8K");
     }
 
     #[test]

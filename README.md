@@ -316,6 +316,12 @@ Atom):
 | ... + 22K expansion (hole at `0A00`) | `0000-09FF`, `0B00-7FFF` (the default) |
 | ... + 23K expansion | `0000-7FFF` |
 
+**Hardware > Video RAM** chooses 1K to 8K of video RAM (`8000-9FFF`): beyond what
+is fitted, writes are lost and reads see open bus, as in Atomulator. The text
+screen needs only half a K, but the graphics modes need more (6K for the biggest).
+**Hardware > Colour board** off shows the picture in shades of grey, as an Atom
+without the colour board would (the refresh rate stays as it is).
+
 Address ranges with no RAM read as open bus. You can see the difference: on a
 bare 1K Atom BASIC keeps its programs in the spare video RAM (type `PRINT TOP`:
 33282, which is `8202`), while with any of the larger sizes it is 10498 (`2902`).

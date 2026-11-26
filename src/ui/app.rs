@@ -17,7 +17,7 @@ use atom_rs::machine::debug::StopReason;
 use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
-use atom_rs::machine::memory::{RamPreset, RomSlot};
+use atom_rs::machine::memory::{MAX_VIDEO_RAM_KB, RamPreset, RomSlot};
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
 use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
@@ -74,6 +74,8 @@ pub struct AtomApp {
     keymap: KeyMap,
     /// Do the arrow keys and Space act as a joystick (Input menu)?
     joystick_keys: bool,
+    /// Is the colour board fitted? (Without it the picture is grey.)
+    colour_board: bool,
     keyboard_window: KeyboardWindow,
     /// Types commands for us (from `--run`, or the tape auto-play).
     typist: Typist,
@@ -116,6 +118,7 @@ impl AtomApp {
             quick_state: None,
             keymap: KeyMap::default(),
             joystick_keys: false,
+            colour_board: true,
             keyboard_window: KeyboardWindow::default(),
             typist: Typist::new(),
             autoplay_tape: false,
@@ -893,6 +896,20 @@ impl AtomApp {
                 ui.label("Sound plays at normal speed or slower.");
             });
             ui.menu_button("Hardware", |ui| {
+                ui.checkbox(&mut self.colour_board, "Colour board");
+                self.atom.bus.framebuffer.monochrome = !self.colour_board;
+                ui.menu_button("Video RAM", |ui| {
+                    let current = self.atom.bus.memory.video_ram_kb();
+                    for kb in 1..=MAX_VIDEO_RAM_KB {
+                        let choice = egui::RadioButton::new(current == kb, format!("{kb}K"));
+                        if ui.add(choice).clicked() {
+                            self.atom.bus.memory.set_video_ram_kb(kb);
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    ui.label("Graphics modes need more: 6K for the biggest.");
+                });
                 ui.menu_button("Main RAM", |ui| {
                     let current = self.atom.bus.memory.ram_preset();
                     let board_fitted = self.atom.bus.memory.board.is_some();

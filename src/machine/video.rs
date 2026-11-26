@@ -43,6 +43,21 @@ pub const PALETTE: [[u8; 3]; 9] = [
     [255, 129, 0],   // orange
 ];
 
+/// What the picture looks like without the colour board: shades of grey.
+/// (Atomulator's monochrome palette: black, then everything lit between mid
+/// and full brightness.)
+pub const MONOCHROME_PALETTE: [[u8; 3]; 9] = [
+    [32, 32, 32],    // black
+    [220, 220, 220], // green
+    [252, 252, 252], // yellow
+    [128, 128, 128], // blue
+    [128, 128, 128], // red
+    [252, 252, 252], // buff
+    [220, 220, 220], // cyan
+    [220, 220, 220], // magenta
+    [220, 220, 220], // orange
+];
+
 /// The four colours selectable by two bits, for each of the two colour sets.
 const COLOURS_BY_SET: [[u8; 4]; 2] = [[GREEN, YELLOW, BLUE, RED], [BUFF, CYAN, MAGENTA, ORANGE]];
 
@@ -50,21 +65,29 @@ const COLOURS_BY_SET: [[u8; 4]; 2] = [[GREEN, YELLOW, BLUE, RED], [BUFF, CYAN, M
 #[derive(Clone)]
 pub struct Framebuffer {
     pub pixels: Vec<u8>,
+    /// Show shades of grey: an Atom without the colour board.
+    pub monochrome: bool,
 }
 
 impl Framebuffer {
     pub fn new() -> Self {
         Framebuffer {
             pixels: vec![BLACK; WIDTH * HEIGHT],
+            monochrome: false,
         }
     }
 
     /// Convert to RGBA bytes (4 per pixel), ready to upload as a texture.
     pub fn to_rgba(&self) -> Vec<u8> {
+        let palette = if self.monochrome {
+            &MONOCHROME_PALETTE
+        } else {
+            &PALETTE
+        };
         self.pixels
             .iter()
             .flat_map(|&index| {
-                let [r, g, b] = PALETTE[index as usize];
+                let [r, g, b] = palette[index as usize];
                 [r, g, b, 255]
             })
             .collect()
@@ -254,5 +277,36 @@ mod tests {
         // Line 2 repeats the first row; line 3 starts the next row (RAM + 16).
         assert_eq!(frame.pixels[2 * WIDTH], YELLOW);
         assert_eq!(frame.pixels[3 * WIDTH], RED);
+    }
+
+    #[test]
+    fn without_the_colour_board_every_pixel_is_grey() {
+        let mut frame = Framebuffer::new();
+        for (i, pixel) in frame.pixels.iter_mut().enumerate() {
+            *pixel = (i % 9) as u8; // every palette index
+        }
+        let coloured = frame.to_rgba();
+        assert!(
+            coloured.chunks(4).any(|p| p[0] != p[1] || p[1] != p[2]),
+            "with the board there is colour"
+        );
+        frame.monochrome = true;
+        assert!(
+            frame
+                .to_rgba()
+                .chunks(4)
+                .all(|p| p[0] == p[1] && p[1] == p[2]),
+            "without it there are only greys"
+        );
+    }
+
+    #[test]
+    fn monochrome_still_tells_lit_pixels_from_dark_ones() {
+        let mut frame = Framebuffer::new();
+        frame.monochrome = true;
+        frame.pixels[0] = BLACK;
+        frame.pixels[1] = GREEN;
+        let rgba = frame.to_rgba();
+        assert!(rgba[4] > rgba[0] + 100, "green is much brighter than black");
     }
 }

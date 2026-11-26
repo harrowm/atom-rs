@@ -46,6 +46,13 @@ struct Snapshot {
     /// How much RAM is fitted.
     #[serde(default)]
     ram_preset: RamPreset,
+    /// How much video RAM is fitted, in K.
+    #[serde(default = "full_video_ram")]
+    video_ram_kb: u8,
+}
+
+fn full_video_ram() -> u8 {
+    super::memory::MAX_VIDEO_RAM_KB
 }
 
 impl Atom {
@@ -67,6 +74,7 @@ impl Atom {
             fdc_nmi_was_asserted: bus.fdc_nmi_was_asserted,
             ramrom_registers: bus.memory.board.as_ref().map(|board| board.registers()),
             ram_preset: bus.memory.ram_preset(),
+            video_ram_kb: bus.memory.video_ram_kb(),
         };
         let json = serde_json::to_vec(&snapshot).map_err(|e| e.to_string())?;
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
@@ -97,6 +105,7 @@ impl Atom {
         self.cpu = snapshot.cpu;
         bus.memory.ram.copy_from_slice(&snapshot.ram);
         bus.memory.set_ram_preset(snapshot.ram_preset);
+        bus.memory.set_video_ram_kb(snapshot.video_ram_kb);
         bus.ppi = snapshot.ppi;
         bus.via = snapshot.via;
         bus.vdg = snapshot.vdg;
