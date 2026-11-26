@@ -398,3 +398,73 @@ fn ac_level(samples: &[f32]) -> f32 {
     let power = samples.iter().map(|s| (s - mean) * (s - mean)).sum::<f32>();
     (power / samples.len().max(1) as f32).sqrt()
 }
+
+/// The archive's "Utility ROMs" category: ROM images that the AtoMMC loads
+/// into RAM, which the Ramoth RAM/ROM board then maps into the utility socket
+/// at `A000`. Before the board was emulated the loader said "NO RAM BANKS
+/// FOUND AT #A000". Load A&F's Utilikit (the first title), press BREAK, and
+/// run its `COLD` command (a BASIC extension, so no star), which prints the
+/// ROM's copyright line from `A000`.
+#[test]
+fn a_utility_rom_from_the_archive_menu_loads_and_runs() {
+    if !Path::new(ARCHIVE).join("MENU").exists() || !Path::new("roms/ramrom.rom").exists() {
+        common::skipped("needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
+        return;
+    }
+    let mut atom = Atom::new();
+    atom.use_sd_card(Path::new("roms"), ARCHIVE.into())
+        .expect("AtoMMC ROMs load");
+    for _ in 0..120 {
+        atom.run_frame();
+    }
+    let mut typist = Typist::new();
+    typist.type_text("*MENU\n", 0);
+    let menu_mode = VideoMode::Graphics {
+        width: 256,
+        height: 192,
+        colours: 2,
+    };
+    assert!(
+        run_until(&mut atom, &mut typist, 3000, |a| a.video_mode()
+            == menu_mode
+            && lit_pixels(a) > 5000),
+        "the archive's front menu never appeared"
+    );
+    run_until(&mut atom, &mut typist, 200, |_| false);
+
+    // (F) Utility ROMs, then the first title.
+    hold_key(&mut atom, "F", 15);
+    assert!(
+        run_until(&mut atom, &mut typist, 1500, |a| screen_has(
+            a,
+            "A&F UTILIKIT"
+        )),
+        "the list of ROMs never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+    run_until(&mut atom, &mut typist, 300, |_| false);
+    hold_key(&mut atom, "RETURN", 15);
+    assert!(
+        run_until(&mut atom, &mut typist, 4000, |a| screen_has(
+            a,
+            "VERIFY AT #A000 SUCCEEDED"
+        )),
+        "the ROM was not loaded into RAM at A000:\n{}",
+        atom.screen_text().join("\n")
+    );
+
+    // BREAK starts it; the board must not forget the ROM.
+    atom.reset();
+    for _ in 0..200 {
+        atom.run_frame();
+    }
+    typist.type_text("COLD\n", atom.bus.vdg.frames);
+    assert!(
+        run_until(&mut atom, &mut typist, 600, |a| screen_has(
+            a,
+            "(C) A&F 1982"
+        )),
+        "the ROM did not run from A000:\n{}",
+        atom.screen_text().join("\n")
+    );
+}

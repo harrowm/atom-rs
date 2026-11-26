@@ -39,6 +39,9 @@ struct Snapshot {
     external_irq: bool,
     nmi_edge: bool,
     fdc_nmi_was_asserted: bool,
+    /// The RAM/ROM board's bank and flags registers, if one is fitted.
+    #[serde(default)]
+    ramrom_registers: Option<(u8, u8)>,
 }
 
 impl Atom {
@@ -58,6 +61,7 @@ impl Atom {
             external_irq: bus.external_irq,
             nmi_edge: bus.nmi_edge,
             fdc_nmi_was_asserted: bus.fdc_nmi_was_asserted,
+            ramrom_registers: bus.memory.board.as_ref().map(|board| board.registers()),
         };
         let json = serde_json::to_vec(&snapshot).map_err(|e| e.to_string())?;
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
@@ -92,6 +96,11 @@ impl Atom {
         bus.vdg = snapshot.vdg;
         bus.fdc = snapshot.fdc;
         bus.tape = snapshot.tape;
+        if let (Some(board), Some((bank, flags))) =
+            (&mut bus.memory.board, snapshot.ramrom_registers)
+        {
+            board.set_registers(bank, flags);
+        }
         // The SID chip's state is not saved: it starts silent.
         bus.sid.reset();
         bus.cycles = snapshot.cycles;

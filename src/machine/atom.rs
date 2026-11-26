@@ -12,8 +12,9 @@ use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
 use super::fdc8271::Fdc8271;
 use super::joystick::Joystick;
-use super::memory::{Memory, ROM_SIZE, RamLayout, Region, RomSlot, open_bus};
+use super::memory::{Memory, RamLayout, Region, RomSlot, open_bus};
 use super::ppi8255::Ppi;
+use super::ramrom::{self, RamRomBoard};
 use super::sid::SidCard;
 use super::sound::Sampler;
 use super::tape::Tape;
@@ -24,17 +25,6 @@ use crate::cpu::{Bus, Cpu};
 
 /// The Atom's CPU clock.
 pub const CLOCK_HZ: f64 = 1_000_000.0;
-
-/// The Ramoth RAM/ROM image holds 128K of ROMs. These are the parts of it that
-/// make an AtoMMC machine: where in the file each 4K ROM starts.
-const RAMROM_IMAGE_SIZE: usize = 0x20000;
-const RAMROM_SLICES: [(RomSlot, usize); 5] = [
-    (RomSlot::Utility, 0x00000),       // #A000 bank 0
-    (RomSlot::Basic, 0x10000),         // Atom BASIC (disk ROM enabled)
-    (RomSlot::FloatingPoint, 0x11000), // Atom floating point
-    (RomSlot::Disk, 0x12000),          // the AtoMMC ROM, instead of Atom DOS
-    (RomSlot::Kernel, 0x13000),        // Atom kernel
-];
 
 /// Everything the CPU can reach over its bus.
 pub struct AtomBus {
@@ -145,6 +135,13 @@ impl AtomBus {
         self.fdc_nmi_was_asserted = false;
     }
 
+    fn read_board_register(&self, addr: u16) -> u8 {
+        self.memory
+            .board
+            .as_ref()
+            .map_or_else(|| open_bus(addr), |board| board.read_register(addr))
+    }
+
     /// Tell the speaker and SID what rate the sound card runs at.
     pub fn set_audio_sample_rate(&mut self, sample_rate: u32) {
         self.sound.set_sample_rate(CLOCK_HZ, f64::from(sample_rate));
@@ -157,6 +154,7 @@ impl AtomBus {
             Region::Ram | Region::VideoRam => self.memory.ram[addr as usize],
             Region::Rom(slot) => self.memory.read_rom(slot, addr),
             Region::Sid => self.sid.read(addr),
+            Region::RamRom => self.read_board_register(addr),
             Region::Ppi | Region::Via | Region::Fdc | Region::AtoMmc | Region::Unmapped => {
                 open_bus(addr)
             }
@@ -178,6 +176,7 @@ impl Bus for AtomBus {
             Region::Fdc => self.fdc.read(addr),
             Region::AtoMmc => self.atommc.read(addr),
             Region::Sid => self.sid.read(addr),
+            Region::RamRom => self.read_board_register(addr),
             Region::Unmapped => {
                 if self.debug.log_unmapped {
                     self.debug.note_unmapped(addr, false);
@@ -199,7 +198,13 @@ impl Bus for AtomBus {
             Region::Fdc => self.fdc.write(addr, value),
             Region::AtoMmc => self.atommc.write(addr, value),
             Region::Sid => self.sid.write(addr, value),
-            Region::Rom(_) => {} // writes to ROM go nowhere
+            Region::RamRom => {
+                if let Some(board) = &mut self.memory.board {
+                    board.write_register(addr, value);
+                }
+            }
+            // Writes to ROM go nowhere, unless the RAM/ROM board has put RAM there.
+            Region::Rom(slot) => self.memory.write_rom_area(slot, addr, value),
             Region::Unmapped => {
                 if self.debug.log_unmapped {
                     self.debug.note_unmapped(addr, true);
@@ -262,6 +267,7 @@ impl Atom {
     /// 8271 floppy controller) and no SD card. Resets the machine.
     pub fn use_floppy_disks(&mut self, rom_dir: &Path) -> Result<(), String> {
         self.load_roms(rom_dir)?;
+        self.bus.memory.board = None;
         self.bus.memory.set_layout(RamLayout::expanded());
         self.bus.atommc.remove_card();
         self.reset();
@@ -279,25 +285,18 @@ impl Atom {
     /// Turn this into an Atom with an AtoMMC SD card interface, using the
     /// folder `card_folder` as the card.
     ///
-    /// The AtoMMC ROM replaces the Atom DOS ROM, and the machine uses the
-    /// matching kernel and BASIC. All of these come from the 128K
-    /// `ramrom.rom` image (the Ramoth RAM/ROM board's ROMs, as shipped with
-    /// Atomulator), which must be in `rom_dir`. The disk controller's page at
-    /// `0A00` becomes RAM. Resets the machine.
+    /// This is the Atom as the AtoMMC is used: with a Ramoth RAM/ROM board
+    /// (see [`RamRomBoard`]) whose 128K ROM image, `ramrom.rom`, must be in
+    /// `rom_dir`. The board's `DISKROM` jumper is fitted, so the machine boots
+    /// with the AtoMMC ROM in place of Atom DOS and its matching kernel and
+    /// BASIC, and the page at `0A00` is RAM. Resets the machine.
     pub fn use_sd_card(&mut self, rom_dir: &Path, card_folder: PathBuf) -> Result<(), String> {
         let path = rom_dir.join("ramrom.rom");
         let image = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        if image.len() != RAMROM_IMAGE_SIZE {
-            return Err(format!(
-                "{} should be {RAMROM_IMAGE_SIZE} bytes",
-                path.display()
-            ));
-        }
+        let board = RamRomBoard::new(&image, ramrom::flag::DISKROM)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
         let memory = &mut self.bus.memory;
-        for (slot, offset) in RAMROM_SLICES {
-            memory.load_rom(slot, &image[offset..offset + ROM_SIZE])?;
-        }
-        memory.disk_interface_fitted = false;
+        memory.board = Some(board);
         memory.set_layout(RamLayout::full());
 
         let mut atommc = AtoMmc::with_card(card_folder);
@@ -444,6 +443,106 @@ mod tests {
         atom.bus.read(0x0000);
         assert_eq!(atom.bus.cycles, 2);
         assert_eq!(atom.bus.vdg.line(), 0);
+    }
+
+    /// A board whose ROM image has block `n` (at `n * 0x1000`) filled with `n`.
+    fn atom_with_a_numbered_board(jumpers: u8) -> Atom {
+        let image: Vec<u8> = (0..ramrom::IMAGE_SIZE)
+            .map(|i| (i / 0x1000) as u8)
+            .collect();
+        let mut atom = Atom::new();
+        atom.bus.memory.board = Some(RamRomBoard::new(&image, jumpers).unwrap());
+        atom.bus.memory.set_layout(RamLayout::full());
+        atom
+    }
+
+    #[test]
+    fn the_board_registers_are_on_the_bus_only_when_a_board_is_fitted() {
+        let mut atom = Atom::new();
+        atom.bus.write(0xBFFF, 0x05);
+        assert_eq!(atom.bus.read(0xBFFF), 0xBF, "no board: open bus");
+
+        let mut atom = atom_with_a_numbered_board(0);
+        atom.bus.write(0xBFFF, 0x05);
+        atom.bus.write(0xBFFE, 0x02);
+        assert_eq!(atom.bus.read(0xBFFF), 0xB5);
+        assert_eq!(atom.bus.read(0xBFFE), 0xB2);
+        assert_eq!(atom.bus.read(0xBC00), 0xBF, "the rest of the page");
+    }
+
+    #[test]
+    fn the_utility_block_shows_a_rom_bank_or_the_ram_at_7000() {
+        let mut atom = atom_with_a_numbered_board(0);
+        // A ROM bank: block n of the image.
+        atom.bus.write(0xBFFF, 3);
+        assert_eq!(atom.bus.read(0xA123), 3);
+        atom.bus.write(0xA123, 0x99);
+        assert_eq!(atom.bus.read(0xA123), 3, "ROM cannot be written");
+
+        // EXTRAM with bank 0: the RAM at 7000, writable through A000.
+        atom.bus.write(0x7123, 0xAB);
+        atom.bus.write(0xBFFF, 0);
+        atom.bus.write(0xBFFE, 0x01);
+        assert_eq!(atom.bus.read(0xA123), 0xAB);
+        atom.bus.write(0xA124, 0x55);
+        assert_eq!(atom.bus.peek(0x7124), 0x55);
+        assert_eq!(atom.bus.read(0xA124), 0x55);
+
+        // With bank 1 selected it is a ROM again.
+        atom.bus.write(0xBFFF, 1);
+        assert_eq!(atom.bus.read(0xA123), 1);
+    }
+
+    #[test]
+    fn the_board_flags_choose_the_rom_set_and_what_is_at_0a00() {
+        // DISKROM jumper, as with an AtoMMC: its ROM set, and RAM at 0A00.
+        let mut atom = atom_with_a_numbered_board(ramrom::flag::DISKROM);
+        atom.bus.memory.disk_interface_fitted = true;
+        assert_eq!(atom.bus.read(0xE000), 0x12, "the AtoMMC ROM");
+        assert_eq!(atom.bus.read(0xC000), 0x10);
+        atom.bus.write(0x0A00, 0x42);
+        assert_eq!(
+            atom.bus.read(0x0A00),
+            0x42,
+            "RAM, not the floppy controller"
+        );
+
+        // Clearing the flag in the register cancels the jumper: the other
+        // ROM set, and the floppy controller shows at 0A00.
+        atom.bus.write(0xBFFE, ramrom::flag::DISKROM);
+        assert_eq!(atom.bus.read(0xC000), 0x14);
+        assert_eq!(atom.bus.memory.region(0x0A00), Region::Fdc);
+    }
+
+    #[test]
+    fn break_does_not_clear_the_board_so_a_loaded_rom_survives() {
+        let mut atom = atom_with_a_numbered_board(0);
+        atom.bus.write(0xBFFE, 0x01);
+        atom.bus.write(0xBFFF, 0x00);
+        atom.reset();
+        assert_eq!(atom.bus.read(0xBFFE), 0xB1);
+        assert!(
+            atom.bus
+                .memory
+                .board
+                .as_ref()
+                .unwrap()
+                .utility_block_is_ram(),
+            "still showing the RAM"
+        );
+    }
+
+    #[test]
+    fn a_saved_state_restores_the_board_registers() {
+        let mut atom = atom_with_a_numbered_board(0);
+        atom.bus.write(0xBFFE, 0x05);
+        atom.bus.write(0xBFFF, 0x07);
+        let state = atom.save_state().unwrap();
+        atom.bus.write(0xBFFE, 0x00);
+        atom.bus.write(0xBFFF, 0x00);
+        atom.load_state(&state).unwrap();
+        assert_eq!(atom.bus.read(0xBFFE), 0xB5);
+        assert_eq!(atom.bus.read(0xBFFF), 0xB7);
     }
 
     #[test]

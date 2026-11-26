@@ -107,6 +107,16 @@ names, are matched without regard to case, and nothing outside the folder can
 be reached. What you save from the Atom appears in the folder as an ordinary
 file.
 
+**Utility ROMs.** The menu's category **F** ("Utility ROMs": Acorn's Atom Calc,
+the ACE and AEK ROMs, A&F's Utilikit and more) loads a ROM image from the card
+into RAM and switches it in at `A000`, which needs the **Ramoth RAM/ROM board**.
+That board is part of the SD card mode, so these work. After a ROM says it has
+loaded, press **F12** (BREAK) to start it. Most of these ROMs add BASIC
+keywords, so you type them **without a star**: for example, after loading A&F's
+Utilikit and pressing BREAK, `COLD` prints its copyright line. The ROM
+survives BREAK; it goes when you leave SD card mode or reset the whole machine.
+Bank 8 onwards of the board's ROM and its BBC BASIC mode are not emulated.
+
 Not emulated yet: SDDOS (disk images stored on the card), so games that insist
 on a floppy still use the disk method below.
 
