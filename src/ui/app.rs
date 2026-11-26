@@ -879,49 +879,69 @@ impl AtomApp {
                 );
             });
             ui.menu_button("Disk", |ui| {
-                if self.atom.bus.atommc.card_folder().is_some() {
-                    ui.label("SD card (AtoMMC) machine: no floppy drives.");
-                    ui.label("Use Hardware > Machine to switch to a floppy disk Atom.");
-                } else if self.atom.machine() == Machine::BbcBasic {
-                    ui.label("BBC BASIC machine: no floppy drives.");
-                    ui.label("Use Hardware > Machine to switch to a floppy disk Atom.");
-                } else if !self.atom.bus.memory.disk_interface_fitted {
-                    ui.label("No disk ROM loaded (dosrom.rom)");
+                // The two floppy machines have drives, but only if there is a
+                // disk system to drive them: Atom DOS (dosrom.rom) or GDOS.
+                let machine = self.atom.machine();
+                let drives_work = match machine {
+                    Machine::FloppyAtom => self.atom.bus.memory.disk_interface_fitted,
+                    Machine::GdosAtom => true,
+                    Machine::SdCard | Machine::BbcBasic => false,
+                };
+                let why_not = match machine {
+                    Machine::SdCard => Some(
+                        "The SD card machine has no floppy drives. Disk images on the card are \
+                         used with SDDOS (type SDDOS, then *DIN). Use Hardware > Machine to \
+                         switch to a floppy disk Atom.",
+                    ),
+                    Machine::BbcBasic => Some(
+                        "The BBC BASIC machine has no floppy drives. Use Hardware > Machine to \
+                         switch to a floppy disk Atom.",
+                    ),
+                    _ if !drives_work => Some("No disk ROM is loaded (roms/dosrom.rom)."),
+                    _ => None,
+                };
+                if let Some(reason) = why_not {
+                    ui.add(egui::Label::new(egui::RichText::new(reason).weak()).wrap());
                 }
-                for drive in 0..2 {
-                    let disk = &self.atom.bus.fdc.drives[drive];
-                    let (present, modified) =
-                        (disk.is_some(), disk.as_ref().is_some_and(|d| d.modified));
-                    let title = match (present, modified) {
-                        (false, _) => format!("Drive {drive}: empty"),
-                        (true, false) => format!("Drive {drive}"),
-                        (true, true) => format!("Drive {drive} (unsaved changes)"),
-                    };
-                    ui.menu_button(title, |ui| {
-                        if ui.button("Insert disk image...").clicked() {
-                            self.insert_disk(drive);
-                            ui.close();
-                        }
-                        if ui.button("New blank disk").clicked() {
-                            self.new_blank_disk(drive);
-                            ui.close();
-                        }
-                        ui.add_enabled_ui(present, |ui| {
-                            if ui.button("Save").clicked() {
-                                self.save_disk(drive, false);
+                ui.add_enabled_ui(drives_work, |ui| {
+                    for drive in 0..2 {
+                        let disk = &self.atom.bus.fdc.drives[drive];
+                        let (present, modified) =
+                            (disk.is_some(), disk.as_ref().is_some_and(|d| d.modified));
+                        let title = match (present, modified) {
+                            (false, _) => format!("Drive {drive}: empty"),
+                            (true, false) => format!("Drive {drive}"),
+                            (true, true) => format!("Drive {drive} (unsaved changes)"),
+                        };
+                        let menu = ui.menu_button(title, |ui| {
+                            if ui.button("Insert disk image...").clicked() {
+                                self.insert_disk(drive);
                                 ui.close();
                             }
-                            if ui.button("Save as...").clicked() {
-                                self.save_disk(drive, true);
+                            if ui.button("New blank disk").clicked() {
+                                self.new_blank_disk(drive);
                                 ui.close();
                             }
-                            if ui.button("Eject").clicked() {
-                                self.eject_disk(drive);
-                                ui.close();
-                            }
+                            ui.add_enabled_ui(present, |ui| {
+                                if ui.button("Save").clicked() {
+                                    self.save_disk(drive, false);
+                                    ui.close();
+                                }
+                                if ui.button("Save as...").clicked() {
+                                    self.save_disk(drive, true);
+                                    ui.close();
+                                }
+                                if ui.button("Eject").clicked() {
+                                    self.eject_disk(drive);
+                                    ui.close();
+                                }
+                            });
                         });
-                    });
-                }
+                        if let Some(reason) = why_not {
+                            menu.response.on_disabled_hover_text(reason);
+                        }
+                    }
+                });
             });
             ui.menu_button("Sound", |ui| {
                 if self.audio.is_none() {

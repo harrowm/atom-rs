@@ -199,3 +199,5 @@ The RAM/ROM board's `BBCMODE` flag (a jumper, toggled by `Atom::set_bbc_basic`, 
 ### Menu tidy-up and restart clicks
 Menus now follow one rule: anything about the machine's hardware is under **Hardware** (the machine type, RAM, video RAM, colour board, SID card, GDOS bank, card folder, ROMs). The old File items for the SD card and ROMs, and the Sound menu's SID switch, moved or went (they duplicated Hardware > Machine). The top-level "Machine" menu (Reset, Pause, speed) is now **Run**, and the debugger's "Hardware" window is **Chip registers**, so each name means one thing. Restarting the Atom from a menu, BREAK, reset, loading a ROM or a state caused a click (the speaker and SID levels jump while samples keep flowing, and the DC blocker turns the step into a pop): `AtomApp::restart_audio` now clears the audio queue, so the output fades out through the existing run-dry path, and holds new sound back for 150 ms so it fades in again.
 
+The Disk menu's drives are greyed out on machines with no floppy drives (SD card, BBC BASIC) and when no disk ROM is loaded, with a hover explanation (for SD card it points to SDDOS and *DIN).
+
