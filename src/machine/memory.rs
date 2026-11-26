@@ -150,17 +150,25 @@ pub const MAX_VIDEO_RAM_KB: u8 = 8;
 /// The video RAM window.
 const VIDEO_RAM: Range<u16> = 0x8000..0xA000;
 
-/// What the RAM holds when the Atom is switched on.
+/// What the RAM holds when the Atom is switched on: zeros, except the four
+/// bytes of BASIC's `RND` seed.
 ///
-/// Real RAM chips power up with junk in them, and software relies on it: Atom
-/// BASIC keeps its `RND` seed in the zero page and never sets it, so a
-/// programme like Acornsoft's Asteroids, which places its rocks with `RND`,
-/// gets none at all if the seed starts as zero. A fixed pseudo-random pattern
-/// gives the same "junk" on every run, so the emulator stays repeatable.
+/// Atom BASIC keeps its `RND` seed in the zero page (`08-0B`) and never sets
+/// it, relying on the junk a real machine's RAM powers up with: a programme
+/// like Acornsoft's Asteroids, which places its rocks with `RND`, gets none at
+/// all if the seed starts as zero. A fixed pseudo-random seed gives the same
+/// "random" numbers on every run, so the emulator stays repeatable.
+///
+/// The rest is deliberately zero, as in Atomulator, which the ROMs are
+/// known to work with. The AtoMMC ROM, for one, keeps its current ROM bank in
+/// `$FD` and assumes it starts at 0: filled with junk, SDDOS's vectors were
+/// saved as living in a nonsense bank, and every `*` command after a blank
+/// BASIC statement then ran the wrong ROM (Chuckie Egg's loader, which has such
+/// lines, failed that way).
 fn power_on_ram() -> [u8; 0x10000] {
     let mut ram = [0; 0x10000];
     let mut state: u32 = 0x2545_F491;
-    for byte in ram.iter_mut() {
+    for byte in &mut ram[RND_SEED] {
         // xorshift32: a few shifts and xors give a decent scramble.
         state ^= state << 13;
         state ^= state >> 17;
@@ -169,6 +177,9 @@ fn power_on_ram() -> [u8; 0x10000] {
     }
     ram
 }
+
+/// Where Atom BASIC keeps its `RND` seed.
+const RND_SEED: Range<usize> = 0x08..0x0C;
 
 #[derive(Clone, Debug)]
 pub struct Memory {
@@ -396,14 +407,21 @@ mod tests {
     }
 
     #[test]
-    fn ram_powers_up_holding_junk_not_zeros() {
-        // The zero page holds BASIC's RND seed (08-0B), which must not be zero.
+    fn ram_powers_up_zero_except_the_rnd_seed() {
         let memory = Memory::new(RamPreset::With22KExpansion);
-        assert!(memory.ram[8..12].iter().any(|&b| b != 0));
-        let zeros = memory.ram.iter().filter(|&&b| b == 0).count();
-        assert!(
-            zeros < 1000,
-            "{zeros} zero bytes out of 65536 looks like a blank memory"
+        // BASIC's RND seed (08-0B) must not be zero, or RND gives nothing.
+        assert!(memory.ram[RND_SEED].iter().any(|&b| b != 0));
+        // Everything else is zero, which the ROMs assume (see power_on_ram).
+        let others_nonzero = memory
+            .ram
+            .iter()
+            .enumerate()
+            .filter(|(address, byte)| **byte != 0 && !RND_SEED.contains(address))
+            .count();
+        assert_eq!(others_nonzero, 0);
+        assert_eq!(
+            memory.ram[0xFD], 0,
+            "the AtoMMC ROM's current bank starts at 0"
         );
     }
 

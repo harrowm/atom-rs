@@ -134,9 +134,8 @@ What you `*SAVE` is written into the image file itself. The mounted images are
 remembered in a small file, `BOOTDRV.CFG`, in the card's top folder, and come
 back the next time you type `SDDOS`. (That means the emulator writes that one
 file into whatever folder you use as the card.) A read-only image mounts but
-refuses writes. Known issue: Chuckie Egg's loader (`RUNME`, from the archive)
-stops with a BASIC error under SDDOS, though it runs from the SD card directly
-and from a floppy disk image; I have not found out why.
+refuses writes. Chuckie Egg loads and runs from the SD card, from a floppy
+image, with GDOS, and from an image on the card through SDDOS.
 
 ### Running single games from disk images (the manual way)
 

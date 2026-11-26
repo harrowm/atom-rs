@@ -262,3 +262,78 @@ fn sddos_remembers_the_mounted_images_next_time() {
         "drive 0 was not remounted:\n{screen}"
     );
 }
+
+/// A BASIC statement that is just a space makes BASIC offer it to the utility
+/// ROMs, which runs the AtoMMC ROM's scanner over the ROM banks and wraps the
+/// OS vectors that point into the banked `A000` area. That wrapping saves the
+/// ROM's current bank from `$FD`, which must start at 0. When RAM powered up
+/// full of junk it did not, and SDDOS's `*` commands then ran the wrong bank
+/// and failed with an error, as Chuckie Egg's loader (which has such lines)
+/// did. This is the smallest program that shows it.
+#[test]
+fn sddos_star_commands_work_after_a_blank_basic_statement() {
+    let card = Card::new("sddos-blank");
+    card.add_disk_with_a_file("TEST.SSD", &HELLO_DATA);
+    let Some(mut atom) = atom_with_card(&card.0) else {
+        return;
+    };
+    run_command(&mut atom, "SDDOS\n");
+    run_command(&mut atom, "*DIN 0 TEST.SSD\n");
+    // Line 20 is a single space.
+    for line in [
+        "10 ?#2000=7\n",
+        "20 \n",
+        "30 *NOMON\n",
+        "40 ?#2001=9\n",
+        "50 END\n",
+        "RUN\n",
+    ] {
+        run_command(&mut atom, line);
+    }
+    let screen = atom.screen_text().join("\n");
+    assert!(!screen.contains("ERROR"), "the program failed:\n{screen}");
+    assert_eq!(atom.bus.peek(0x2000), 7, "line 10 ran");
+    assert_eq!(atom.bus.peek(0x2001), 9, "line 40 ran, after the *NOMON");
+}
+
+/// The real loader that first showed it: Chuckie Egg's `RUNME`, from a disk
+/// image on the card, through SDDOS.
+#[test]
+fn chuckie_egg_loads_from_a_disk_image_through_sddos() {
+    let game = "testdata/games/chuckie.ssd";
+    if !Path::new(game).exists() {
+        common::skipped("needs testdata/games/chuckie.ssd (scripts/make_all_games.sh)");
+        return;
+    }
+    let card = Card::new("sddos-chuckie");
+    fs::copy(game, card.0.join("CHUCKIE.SSD")).unwrap();
+    let Some(mut atom) = atom_with_card(&card.0) else {
+        return;
+    };
+    let mut typist = Typist::new();
+    typist.type_text(
+        "SDDOS\n*DIN 0 CHUCKIE.SSD\nLOAD \"RUNME\"\nRUN\n",
+        atom.bus.vdg.frames,
+    );
+    // The loader draws the Retro Software menu: a 256 x 192 picture.
+    let menu = atom_rs::machine::vdg6847::VideoMode::Graphics {
+        width: 256,
+        height: 192,
+        colours: 2,
+    };
+    let lit = |a: &Atom| a.bus.framebuffer.pixels.iter().filter(|&&p| p != 0).count();
+    let mut shown = false;
+    for _ in 0..4000 {
+        typist.drive(&mut atom);
+        atom.run_frame();
+        if atom.video_mode() == menu && lit(&atom) > 5000 {
+            shown = true;
+            break;
+        }
+    }
+    assert!(
+        shown,
+        "Chuckie Egg's menu never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+}

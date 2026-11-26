@@ -468,3 +468,51 @@ fn a_utility_rom_from_the_archive_menu_loads_and_runs() {
         atom.screen_text().join("\n")
     );
 }
+
+/// Chuckie Egg from the Atom Software Archive, run the way a user would on
+/// the SD card machine: change to its folder, `*RUN RUNME`, choose colour, and
+/// the game's own screen appears.
+#[test]
+fn chuckie_egg_runs_from_the_archive_on_the_sd_card_machine() {
+    if !Path::new(ARCHIVE).join("ASA/RS/CHUCKIE/RUNME").exists()
+        || !Path::new("roms/ramrom.rom").exists()
+    {
+        common::skipped("needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
+        return;
+    }
+    let mut atom = Atom::new();
+    atom.use_sd_card(Path::new("roms"), ARCHIVE.into())
+        .expect("AtoMMC ROMs load");
+    for _ in 0..120 {
+        atom.run_frame();
+    }
+    let mut typist = Typist::new();
+    typist.type_text("*CWD ASA/RS/CHUCKIE\n*RUN RUNME\n", 0);
+    let menu_mode = VideoMode::Graphics {
+        width: 256,
+        height: 192,
+        colours: 2,
+    };
+    assert!(
+        run_until(&mut atom, &mut typist, 3000, |a| a.video_mode()
+            == menu_mode
+            && lit_pixels(a) > 5000),
+        "the Chuckie Egg menu never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+
+    // Choose "2. Colour" (after giving the loader a moment to read keys).
+    run_until(&mut atom, &mut typist, 200, |_| false);
+    typist.type_text("2", atom.bus.vdg.frames);
+    let game_mode = VideoMode::Graphics {
+        width: 128,
+        height: 192,
+        colours: 4,
+    };
+    assert!(
+        run_until(&mut atom, &mut typist, 6000, |a| a.video_mode()
+            == game_mode
+            && lit_pixels(a) > 5000),
+        "the game never started"
+    );
+}
