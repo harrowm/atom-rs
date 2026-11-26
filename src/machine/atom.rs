@@ -12,7 +12,7 @@ use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
 use super::fdc8271::Fdc8271;
 use super::joystick::Joystick;
-use super::memory::{Memory, RamLayout, Region, RomSlot, open_bus};
+use super::memory::{Memory, RamPreset, Region, RomSlot, open_bus};
 use super::ppi8255::Ppi;
 use super::ramrom::{self, RamRomBoard};
 use super::sid::SidCard;
@@ -58,7 +58,7 @@ pub struct AtomBus {
 impl AtomBus {
     fn new(standard: Standard) -> Self {
         AtomBus {
-            memory: Memory::new(RamLayout::expanded()),
+            memory: Memory::new(RamPreset::With22KExpansion),
             ppi: Ppi::default(),
             via: Via::new(),
             vdg: Vdg::new(standard),
@@ -268,8 +268,20 @@ impl Atom {
     pub fn use_floppy_disks(&mut self, rom_dir: &Path) -> Result<(), String> {
         self.load_roms(rom_dir)?;
         self.bus.memory.board = None;
-        self.bus.memory.set_layout(RamLayout::expanded());
+        self.bus.memory.set_ram_preset(RamPreset::With22KExpansion);
         self.bus.atommc.remove_card();
+        self.reset();
+        Ok(())
+    }
+
+    /// Fit a different amount of RAM, and restart as if the Atom had been
+    /// switched off to do it (what is in RAM is kept). Not possible with the
+    /// RAM/ROM board, which provides RAM everywhere.
+    pub fn set_ram_preset(&mut self, preset: RamPreset) -> Result<(), String> {
+        if self.bus.memory.board.is_some() {
+            return Err("the RAM/ROM board provides RAM everywhere in SD card mode".to_string());
+        }
+        self.bus.memory.set_ram_preset(preset);
         self.reset();
         Ok(())
     }
@@ -297,7 +309,7 @@ impl Atom {
             .map_err(|e| format!("{}: {e}", path.display()))?;
         let memory = &mut self.bus.memory;
         memory.board = Some(board);
-        memory.set_layout(RamLayout::full());
+        memory.set_ram_preset(RamPreset::With23KExpansion);
 
         let mut atommc = AtoMmc::with_card(card_folder);
         if let Ok(eeprom) = std::fs::read(rom_dir.join("mmc_eeprom.rom")) {
@@ -452,7 +464,7 @@ mod tests {
             .collect();
         let mut atom = Atom::new();
         atom.bus.memory.board = Some(RamRomBoard::new(&image, jumpers).unwrap());
-        atom.bus.memory.set_layout(RamLayout::full());
+        atom.bus.memory.set_ram_preset(RamPreset::With23KExpansion);
         atom
     }
 
@@ -543,6 +555,39 @@ mod tests {
         atom.load_state(&state).unwrap();
         assert_eq!(atom.bus.read(0xBFFE), 0xB5);
         assert_eq!(atom.bus.read(0xBFFF), 0xB7);
+    }
+
+    #[test]
+    fn fitting_different_ram_restarts_the_atom_and_keeps_what_was_in_it() {
+        let mut atom = Atom::new();
+        atom.bus.memory.ram[0x0300] = 0x5A;
+        atom.cpu.regs.pc = 0x1234;
+        atom.set_ram_preset(RamPreset::Minimal).unwrap();
+        assert_eq!(atom.bus.memory.ram_preset(), RamPreset::Minimal);
+        assert_eq!(atom.bus.memory.ram[0x0300], 0x5A, "chips are not wiped");
+        assert_ne!(atom.cpu.regs.pc, 0x1234, "it restarted");
+        assert_eq!(atom.bus.memory.region(0x2900), Region::Unmapped);
+    }
+
+    #[test]
+    fn the_ram_cannot_be_changed_in_sd_card_mode() {
+        let mut atom = atom_with_a_numbered_board(0);
+        assert!(atom.set_ram_preset(RamPreset::Minimal).is_err());
+        assert_eq!(
+            atom.bus.memory.ram_preset(),
+            RamPreset::With23KExpansion,
+            "unchanged"
+        );
+    }
+
+    #[test]
+    fn a_saved_state_remembers_how_much_ram_there_was() {
+        let mut atom = Atom::new();
+        atom.set_ram_preset(RamPreset::WithDiskRam).unwrap();
+        let state = atom.save_state().unwrap();
+        atom.set_ram_preset(RamPreset::With22KExpansion).unwrap();
+        atom.load_state(&state).unwrap();
+        assert_eq!(atom.bus.memory.ram_preset(), RamPreset::WithDiskRam);
     }
 
     #[test]

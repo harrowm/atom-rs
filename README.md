@@ -21,9 +21,11 @@ and comments that explain the hardware being modelled.
 * **Sound and tape:** the speaker plays through your sound card (cpal). Tapes
   load from `.uef` files (also gzipped) and the Atom can record `*SAVE`s to a
   new `.uef`. `.atm` programs can be loaded straight into memory.
-* **Memory:** the Atom is emulated with its RAM expansion (about 31K: `0000-09FF`
-  and `0B00-7FFF`, with the disk controller at `0A00`), since a lot of software
-  keeps its variables in the low pages.
+* **Memory:** the Atom is emulated with its RAM expansion by default (about 31K:
+  `0000-09FF` and `0B00-7FFF`, with the disk controller at `0A00`), since a lot
+  of software keeps its variables in the low pages. Six RAM sizes, from a bare
+  1K Atom up, can be chosen from the **Hardware** menu. The Ramoth RAM/ROM board
+  (switchable ROMs and RAM at `A000`) is emulated in SD card mode.
 * **Disks:** an Intel 8271 floppy controller with `.ssd` and `.dsd` disk
   images, working with the real Atom DOS ROM (`*DOS`, `*CAT`, `*LOAD`, `*SAVE`).
 * **Software archive in one command:** `atom-rs --archive` downloads the latest
@@ -283,6 +285,27 @@ to see what a misbehaving program expects.
 
 Try: `PRINT 2+2`, or `10 PRINT "HELLO"` then `RUN`.
 
+### Memory
+
+**Hardware > Main RAM** fits one of Atomulator's six RAM configurations and
+restarts the Atom (what is in RAM is kept, as when swapping chips on a real
+Atom):
+
+| Configuration | RAM |
+|---|---|
+| Minimum 1K in base | `0000-03FF` |
+| 1K in base + 5K | and `2800-3BFF` |
+| 6K on motherboard + 3K DOS | `0000-03FF`, `2000-3FFF` |
+| ... + 16K expansion | `0000-03FF`, `2000-7FFF` |
+| ... + 22K expansion (hole at `0A00`) | `0000-09FF`, `0B00-7FFF` (the default) |
+| ... + 23K expansion | `0000-7FFF` |
+
+Address ranges with no RAM read as open bus. You can see the difference: on a
+bare 1K Atom BASIC keeps its programs in the spare video RAM (type `PRINT TOP`:
+33282, which is `8202`), while with any of the larger sizes it is 10498 (`2902`).
+Many programs need the larger sizes. In SD card mode the choice is not available:
+the RAM/ROM board provides RAM everywhere.
+
 ### Tape
 
 The Atom works like the real machine: `*SAVE "NAME" 2900 2A00` (start and end
@@ -430,7 +453,7 @@ src/
 tests/          SingleStepTests, Dormann tests, boot, tape and disk tests
 examples/       bench.rs
 scripts/        fetch_tests.sh, get_archive.sh, make_game.sh, make_all_games.sh
-roms/           your Atom ROMs (git-ignored)
+roms/           the Atom ROMs (see "The ROMs" below)
 testdata/       downloaded test suites (git-ignored)
 ```
 

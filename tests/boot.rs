@@ -128,3 +128,51 @@ fn typist_types_a_basic_line() {
     }
     assert!(screen_string(&atom).contains("       5"));
 }
+
+/// On a bare 1K Atom there is no RAM where BASIC normally keeps programs
+/// (`2900`), so it puts them in the spare video RAM above the text screen
+/// instead, at `8202`. With any of the larger configurations they are at
+/// `2902`. (`TOP` is the end of the program, which for an empty one is just
+/// above where programs start.)
+#[test]
+fn a_bare_1k_atom_keeps_its_programs_in_video_ram() {
+    use atom_rs::machine::memory::RamPreset;
+    use atom_rs::machine::typist::Typist;
+
+    let top_with = |preset: RamPreset| -> Option<String> {
+        let mut atom = booted_atom(0)?;
+        atom.set_ram_preset(preset).unwrap();
+        for _ in 0..150 {
+            atom.run_frame();
+        }
+        let mut typist = Typist::new();
+        typist.type_text("PRINT TOP\n", atom.bus.vdg.frames);
+        while typist.is_busy() {
+            typist.drive(&mut atom);
+            atom.run_frame();
+        }
+        for _ in 0..60 {
+            atom.run_frame();
+        }
+        Some(screen_string(&atom))
+    };
+    let Some(bare) = top_with(RamPreset::Minimal) else {
+        return;
+    };
+    assert!(
+        bare.contains("33282"),
+        "1K Atom: TOP should be 8202 (33282):\n{bare}"
+    );
+    for preset in [
+        RamPreset::MotherboardOnly,
+        RamPreset::WithDiskRam,
+        RamPreset::With16KExpansion,
+        RamPreset::With22KExpansion,
+    ] {
+        let screen = top_with(preset).unwrap();
+        assert!(
+            screen.contains("10498"),
+            "{preset:?}: TOP should be 2902 (10498):\n{screen}"
+        );
+    }
+}

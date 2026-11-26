@@ -17,7 +17,7 @@ use atom_rs::machine::debug::StopReason;
 use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
-use atom_rs::machine::memory::RomSlot;
+use atom_rs::machine::memory::{RamPreset, RomSlot};
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
 use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
@@ -891,6 +891,25 @@ impl AtomApp {
                 );
                 ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.0).text("volume"));
                 ui.label("Sound plays at normal speed or slower.");
+            });
+            ui.menu_button("Hardware", |ui| {
+                ui.menu_button("Main RAM", |ui| {
+                    let current = self.atom.bus.memory.ram_preset();
+                    let board_fitted = self.atom.bus.memory.board.is_some();
+                    for preset in RamPreset::ALL {
+                        let choice = egui::RadioButton::new(current == preset, preset.label());
+                        if ui.add_enabled(!board_fitted, choice).clicked() {
+                            self.notice = self.atom.set_ram_preset(preset).err();
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if board_fitted {
+                        ui.label("In SD card mode the RAM/ROM board provides RAM everywhere.");
+                    } else {
+                        ui.label("Changing it restarts the Atom.");
+                    }
+                });
             });
             ui.menu_button("Input", |ui| {
                 ui.checkbox(&mut self.joystick_keys, "Joystick on the keyboard");

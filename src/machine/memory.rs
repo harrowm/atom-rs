@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! 0000-09FF  RAM (zero page, stack, OS workspace, then the RAM expansion)
-//! 0B00-7FFF  RAM (about 31K in all; `RamLayout::standard()` is the smaller
+//! 0B00-7FFF  RAM (about 31K in all; `RamPreset::With16KExpansion` is the smaller
 //!            25K Atom with RAM only at 0000-03FF and 2000-7FFF)
 //! 8000-9FFF  Video RAM, read by the 6847
 //! 0A00-0AFF  8271 disk controller (only when the disk interface is fitted)
@@ -22,6 +22,8 @@
 //! floating on the data bus, which Atomulator mimics).
 
 use std::ops::Range;
+
+use serde::{Deserialize, Serialize};
 
 use super::ramrom::RamRomBoard;
 
@@ -72,40 +74,71 @@ pub enum Region {
     Unmapped,
 }
 
-/// Which parts of `0000-7FFF` have RAM chips fitted.
-#[derive(Clone, Debug)]
-pub struct RamLayout {
-    ranges: Vec<Range<u16>>,
+/// How much RAM the Atom has: the six configurations Atomulator offers, from
+/// a bare machine to one with every expansion fitted.
+///
+/// The Atom's own RAM was 1K at the bottom of memory plus 5K on the
+/// motherboard; the disk system added 3K, and a RAM expansion board 16K more.
+/// Everything in `0000-7FFF` that has no RAM reads as open bus.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RamPreset {
+    /// 1K at `0000`. Programs end up in the spare video RAM.
+    Minimal,
+    /// 1K, and the 5K on the motherboard at `2800`.
+    MotherboardOnly,
+    /// 1K, 6K on the motherboard and the 3K the disk system adds (`2000-3FFF`).
+    WithDiskRam,
+    /// ...and a 16K expansion (`4000-7FFF`). Atomulator's default without the
+    /// RAM/ROM board.
+    With16KExpansion,
+    /// ...and the low pages `0400-1FFF`, except `0A00` where the disk
+    /// controller is: 22K of expansion. Enough for software such as Chuckie
+    /// Egg, which keeps its variables in `0400-07FF`. This is the default.
+    #[default]
+    With22KExpansion,
+    /// Everything from `0000` to `7FFF`, including `0A00`. What a machine with
+    /// an AtoMMC (and so no floppy controller) has.
+    With23KExpansion,
 }
 
-impl RamLayout {
-    /// Atomulator's default: 1K at the bottom plus 24K from `2000`, 25K in all.
-    pub fn standard() -> Self {
-        RamLayout {
-            ranges: vec![0x0000..0x0400, 0x2000..0x8000],
+impl RamPreset {
+    pub const ALL: [RamPreset; 6] = [
+        RamPreset::Minimal,
+        RamPreset::MotherboardOnly,
+        RamPreset::WithDiskRam,
+        RamPreset::With16KExpansion,
+        RamPreset::With22KExpansion,
+        RamPreset::With23KExpansion,
+    ];
+
+    /// How it is named in the menu (Atomulator's wording).
+    pub fn label(self) -> &'static str {
+        match self {
+            RamPreset::Minimal => "Minimum 1K in base",
+            RamPreset::MotherboardOnly => "1K in base + 5K",
+            RamPreset::WithDiskRam => "6K on motherboard + 3K DOS",
+            RamPreset::With16KExpansion => "6K motherboard + 3K DOS + 16K expansion",
+            RamPreset::With22KExpansion => "6K motherboard + 3K DOS + 22K expansion (hole at 0A00)",
+            RamPreset::With23KExpansion => "6K motherboard + 3K DOS + 23K expansion",
         }
     }
 
-    /// RAM everywhere from `0000` to `7FFF`, including the page at `0A00`
-    /// where the 8271 disk controller would otherwise be. This is what a machine
-    /// with an AtoMMC (and no floppy controller) has.
-    pub fn full() -> Self {
-        RamLayout {
-            ranges: std::iter::once(0x0000..0x8000).collect(),
+    /// Which parts of `0000-7FFF` have RAM chips fitted.
+    // Some of these really are a list with one range in it.
+    #[allow(clippy::single_range_in_vec_init)]
+    fn ranges(self) -> &'static [Range<u16>] {
+        match self {
+            RamPreset::Minimal => &[0x0000..0x0400],
+            RamPreset::MotherboardOnly => &[0x0000..0x0400, 0x2800..0x3C00],
+            RamPreset::WithDiskRam => &[0x0000..0x0400, 0x2000..0x4000],
+            RamPreset::With16KExpansion => &[0x0000..0x0400, 0x2000..0x8000],
+            RamPreset::With22KExpansion => &[0x0000..0x0A00, 0x0B00..0x8000],
+            RamPreset::With23KExpansion => &[0x0000..0x8000],
         }
     }
 
-    /// The Atom with its RAM expansion: everything from `0000` to `7FFF`
-    /// except the disk controller's page at `0A00-0AFF`, about 31K. Much
-    /// software (Chuckie Egg, for one) keeps its variables in `0400-07FF`.
-    pub fn expanded() -> Self {
-        RamLayout {
-            ranges: vec![0x0000..0x0A00, 0x0B00..0x8000],
-        }
-    }
-
-    fn contains(&self, addr: u16) -> bool {
-        self.ranges.iter().any(|range| range.contains(&addr))
+    fn contains(self, addr: u16) -> bool {
+        self.ranges().iter().any(|range| range.contains(&addr))
     }
 }
 
@@ -138,7 +171,7 @@ pub struct Memory {
     /// addresses that [`Memory::region`] says are RAM are ever used.
     pub ram: Box<[u8; 0x10000]>,
     roms: [Option<Box<[u8; ROM_SIZE]>>; 5],
-    layout: RamLayout,
+    preset: RamPreset,
     /// Is the disk interface fitted? (True once a disk ROM is loaded.)
     pub disk_interface_fitted: bool,
     /// Is a SID sound card fitted (at `BDC0-BDDF`)? Atomulator has one by
@@ -150,20 +183,24 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new(layout: RamLayout) -> Self {
+    pub fn new(preset: RamPreset) -> Self {
         Memory {
             ram: Box::new(power_on_ram()),
             roms: Default::default(),
-            layout,
+            preset,
             disk_interface_fitted: false,
             sid_fitted: true,
             board: None,
         }
     }
 
-    /// Change which parts of `0000-7FFF` have RAM.
-    pub fn set_layout(&mut self, layout: RamLayout) {
-        self.layout = layout;
+    /// Fit a different amount of RAM.
+    pub fn set_ram_preset(&mut self, preset: RamPreset) {
+        self.preset = preset;
+    }
+
+    pub fn ram_preset(&self) -> RamPreset {
+        self.preset
     }
 
     pub fn load_rom(&mut self, slot: RomSlot, data: &[u8]) -> Result<(), String> {
@@ -192,7 +229,7 @@ impl Memory {
             // With the RAM/ROM board its flags decide whether 0A00 is RAM or the
             // floppy controller, whatever the RAM layout says.
             0x0A00..=0x0AFF if self.board_selects_floppy_controller() => Region::Fdc,
-            0x0000..=0x7FFF if self.layout.contains(addr) => Region::Ram,
+            0x0000..=0x7FFF if self.preset.contains(addr) => Region::Ram,
             0x0A00..=0x0AFF if self.board.is_none() && self.disk_interface_fitted => Region::Fdc,
             a if VIDEO_RAM.contains(&a) => Region::VideoRam,
             0xA000..=0xAFFF => Region::Rom(RomSlot::Utility),
@@ -255,7 +292,7 @@ mod tests {
 
     #[test]
     fn decodes_the_main_regions() {
-        let memory = Memory::new(RamLayout::standard());
+        let memory = Memory::new(RamPreset::With16KExpansion);
         assert_eq!(memory.region(0x0000), Region::Ram);
         assert_eq!(memory.region(0x03FF), Region::Ram);
         assert_eq!(memory.region(0x0400), Region::Unmapped);
@@ -271,7 +308,7 @@ mod tests {
     #[test]
     fn ram_powers_up_holding_junk_not_zeros() {
         // The zero page holds BASIC's RND seed (08-0B), which must not be zero.
-        let memory = Memory::new(RamLayout::expanded());
+        let memory = Memory::new(RamPreset::With22KExpansion);
         assert!(memory.ram[8..12].iter().any(|&b| b != 0));
         let zeros = memory.ram.iter().filter(|&&b| b == 0).count();
         assert!(
@@ -280,24 +317,93 @@ mod tests {
         );
     }
 
+    /// Which of these addresses have RAM, for each configuration.
+    fn ram_at(preset: RamPreset, addrs: &[u16]) -> Vec<bool> {
+        let memory = Memory::new(preset);
+        addrs
+            .iter()
+            .map(|&a| memory.region(a) == Region::Ram)
+            .collect()
+    }
+
+    #[test]
+    fn each_preset_fits_the_ram_atomulator_describes() {
+        //                                  0000   03FF   0400   09FF   0B00   1FFF   2000   27FF   2800   3BFF   3C00   3FFF   4000   7FFF
+        let probe = [
+            0x0000, 0x03FF, 0x0400, 0x09FF, 0x0B00, 0x1FFF, 0x2000, 0x27FF, 0x2800, 0x3BFF, 0x3C00,
+            0x3FFF, 0x4000, 0x7FFF,
+        ];
+        let (t, f) = (true, false);
+        assert_eq!(
+            ram_at(RamPreset::Minimal, &probe),
+            [t, t, f, f, f, f, f, f, f, f, f, f, f, f],
+            "1K only"
+        );
+        assert_eq!(
+            ram_at(RamPreset::MotherboardOnly, &probe),
+            [t, t, f, f, f, f, f, f, t, t, f, f, f, f],
+            "plus 5K at 2800"
+        );
+        assert_eq!(
+            ram_at(RamPreset::WithDiskRam, &probe),
+            [t, t, f, f, f, f, t, t, t, t, t, t, f, f],
+            "plus the disk system's 3K: 2000-3FFF"
+        );
+        assert_eq!(
+            ram_at(RamPreset::With16KExpansion, &probe),
+            [t, t, f, f, f, f, t, t, t, t, t, t, t, t],
+            "plus 16K at 4000"
+        );
+        assert_eq!(
+            ram_at(RamPreset::With22KExpansion, &probe),
+            [t, t, t, t, t, t, t, t, t, t, t, t, t, t],
+            "plus the low pages"
+        );
+    }
+
+    #[test]
+    fn the_disk_controller_shows_at_0a00_unless_the_23k_expansion_covers_it() {
+        // The 23K expansion has RAM there, so the controller (if fitted) is
+        // hidden: that is the machine for the AtoMMC, which has no floppies.
+        // Every other configuration leaves the page to the controller.
+        for preset in RamPreset::ALL {
+            let mut memory = Memory::new(preset);
+            memory.disk_interface_fitted = true;
+            let expected = if preset == RamPreset::With23KExpansion {
+                Region::Ram
+            } else {
+                Region::Fdc
+            };
+            assert_eq!(memory.region(0x0A00), expected, "{preset:?}");
+        }
+    }
+
+    #[test]
+    fn the_default_is_the_22k_expansion_and_every_preset_has_its_own_name() {
+        assert_eq!(RamPreset::default(), RamPreset::With22KExpansion);
+        let names: std::collections::HashSet<_> =
+            RamPreset::ALL.iter().map(|p| p.label()).collect();
+        assert_eq!(names.len(), RamPreset::ALL.len());
+    }
+
     #[test]
     fn expanded_layout_has_ram_in_the_low_pages_around_the_disk_controller() {
         // Software such as Chuckie Egg keeps its variables here.
-        let mut memory = Memory::new(RamLayout::expanded());
+        let mut memory = Memory::new(RamPreset::With22KExpansion);
         memory.disk_interface_fitted = true;
         for addr in [0x0400, 0x07FF, 0x09FF, 0x0B00, 0x1FFF, 0x2000, 0x7FFF] {
             assert_eq!(memory.region(addr), Region::Ram, "{addr:04X}");
         }
         assert_eq!(memory.region(0x0A00), Region::Fdc);
         assert_eq!(
-            Memory::new(RamLayout::standard()).region(0x0400),
+            Memory::new(RamPreset::With16KExpansion).region(0x0400),
             Region::Unmapped
         );
     }
 
     #[test]
     fn disk_controller_appears_only_when_fitted() {
-        let mut memory = Memory::new(RamLayout::standard());
+        let mut memory = Memory::new(RamPreset::With16KExpansion);
         assert_eq!(memory.region(0x0A04), Region::Unmapped);
         memory.disk_interface_fitted = true;
         assert_eq!(memory.region(0x0A04), Region::Fdc);
@@ -305,7 +411,7 @@ mod tests {
 
     #[test]
     fn empty_rom_socket_reads_open_bus() {
-        let memory = Memory::new(RamLayout::standard());
+        let memory = Memory::new(RamPreset::With16KExpansion);
         assert_eq!(memory.read_rom(RomSlot::Basic, 0xC123), 0xC1);
     }
 }

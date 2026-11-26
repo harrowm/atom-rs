@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::atom::Atom;
 use super::fdc8271::Fdc8271;
+use super::memory::RamPreset;
 use super::ppi8255::Ppi;
 use super::tape::Tape;
 use super::vdg6847::{VISIBLE_LINES, Vdg, VideoMode};
@@ -42,6 +43,9 @@ struct Snapshot {
     /// The RAM/ROM board's bank and flags registers, if one is fitted.
     #[serde(default)]
     ramrom_registers: Option<(u8, u8)>,
+    /// How much RAM is fitted.
+    #[serde(default)]
+    ram_preset: RamPreset,
 }
 
 impl Atom {
@@ -62,6 +66,7 @@ impl Atom {
             nmi_edge: bus.nmi_edge,
             fdc_nmi_was_asserted: bus.fdc_nmi_was_asserted,
             ramrom_registers: bus.memory.board.as_ref().map(|board| board.registers()),
+            ram_preset: bus.memory.ram_preset(),
         };
         let json = serde_json::to_vec(&snapshot).map_err(|e| e.to_string())?;
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
@@ -91,6 +96,7 @@ impl Atom {
         let bus = &mut self.bus;
         self.cpu = snapshot.cpu;
         bus.memory.ram.copy_from_slice(&snapshot.ram);
+        bus.memory.set_ram_preset(snapshot.ram_preset);
         bus.ppi = snapshot.ppi;
         bus.via = snapshot.via;
         bus.vdg = snapshot.vdg;
