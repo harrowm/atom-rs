@@ -27,6 +27,64 @@ use crate::cpu::{Bus, Cpu};
 /// The Atom's CPU clock.
 pub const CLOCK_HZ: f64 = 1_000_000.0;
 
+/// What kind of Atom this is: the four ways the emulator can be set up. The
+/// Hardware menu chooses between them, and the settings that apply (RAM size,
+/// the card folder, the GDOS ROM bank) depend on which.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Machine {
+    /// The standard disk Atom: an 8271 floppy controller and Atom DOS.
+    FloppyAtom,
+    /// An Atom with the GDOS/ADOS 2015 disk system: a WD1770 controller.
+    GdosAtom,
+    /// An Atom with an AtoMMC SD card and the Ramoth RAM/ROM board.
+    SdCard,
+    /// An Atom running BBC BASIC, through the RAM/ROM board's BBC mode.
+    BbcBasic,
+}
+
+impl Machine {
+    pub const ALL: [Machine; 4] = [
+        Machine::FloppyAtom,
+        Machine::GdosAtom,
+        Machine::SdCard,
+        Machine::BbcBasic,
+    ];
+
+    /// How it is named in the menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            Machine::FloppyAtom => "Floppy disk Atom",
+            Machine::GdosAtom => "Floppy disk Atom with GDOS/ADOS",
+            Machine::SdCard => "SD card (AtoMMC)",
+            Machine::BbcBasic => "BBC BASIC",
+        }
+    }
+
+    /// One line saying what it is, for the menu.
+    pub fn description(self) -> &'static str {
+        match self {
+            Machine::FloppyAtom => {
+                "Intel 8271 disk controller and Atom DOS. Disk images load into its drives."
+            }
+            Machine::GdosAtom => {
+                "WD1770 disk controller and the GDOS/ADOS ROM (type *DOS to start it)."
+            }
+            Machine::SdCard => {
+                "A folder is the SD card. Includes the RAM/ROM board (utility ROMs, SDDOS images)."
+            }
+            Machine::BbcBasic => {
+                "BBC BASIC 2 and a small BBC operating system, from the RAM/ROM board."
+            }
+        }
+    }
+
+    /// Can the amount of main RAM be chosen? (The SD card and BBC machines
+    /// have the RAM/ROM board, which provides RAM everywhere.)
+    pub fn has_choosable_ram(self) -> bool {
+        matches!(self, Machine::FloppyAtom | Machine::GdosAtom)
+    }
+}
+
 /// Everything the CPU can reach over its bus.
 pub struct AtomBus {
     pub memory: Memory,
@@ -329,6 +387,48 @@ impl Atom {
             .map_err(|e| format!("{}: {e}", path.display()))?;
         self.reset();
         Ok(())
+    }
+
+    /// Which kind of Atom this is now.
+    pub fn machine(&self) -> Machine {
+        if self.bbc_basic_active() {
+            Machine::BbcBasic
+        } else if self.bus.memory.board.is_some() {
+            Machine::SdCard
+        } else if self.gdos_active() {
+            Machine::GdosAtom
+        } else {
+            Machine::FloppyAtom
+        }
+    }
+
+    /// Become a different kind of Atom, and restart. Settings that belong to
+    /// the old kind (the RAM size, the card, GDOS) are given up cleanly.
+    ///
+    /// `rom_dir` holds the ROM images. `card_folder` is the folder to use as
+    /// the SD card, which the SD card machine needs.
+    pub fn set_machine(
+        &mut self,
+        machine: Machine,
+        rom_dir: &Path,
+        card_folder: Option<&Path>,
+    ) -> Result<(), String> {
+        match machine {
+            Machine::FloppyAtom => self.use_floppy_disks(rom_dir),
+            Machine::GdosAtom => {
+                self.use_floppy_disks(rom_dir)?;
+                self.use_gdos(rom_dir)
+            }
+            Machine::SdCard => {
+                let folder = card_folder.ok_or("choose a folder to use as the SD card first")?;
+                self.use_sd_card(rom_dir, folder.to_path_buf())
+            }
+            Machine::BbcBasic => {
+                // GDOS cannot coexist with the board.
+                self.bus.memory.remove_gdos();
+                self.set_bbc_basic(true, rom_dir)
+            }
+        }
     }
 
     /// Is the GDOS disk system fitted?

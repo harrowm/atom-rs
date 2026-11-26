@@ -98,8 +98,8 @@ folder and ran it.
 
 This needs `roms/ramrom.rom` (the 128K ROM image Atomulator ships, which holds
 the AtoMMC ROM, the kernel and BASIC to match). It can also be chosen from the
-**File > Use a folder as an SD card...** menu, and **Back to floppy disks** goes
-back to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
+**Hardware > Machine > SD card (AtoMMC)** (or **File > Use a folder as an SD
+card...**) menu, and choosing **Floppy disk Atom** goes back to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
 are no floppy drives.
 
 Any folder works as a card, not just the archive: put programs in it (in the
@@ -301,9 +301,28 @@ to see what a misbehaving program expects.
 
 Try: `PRINT 2+2`, or `10 PRINT "HELLO"` then `RUN`.
 
+### The machine: Hardware > Machine
+
+The emulator can be four different kinds of Atom, chosen at the top of the
+**Hardware** menu (the current one is also shown in the status line). Choosing
+one restarts the Atom, and the settings below it in the menu change to the ones
+that apply to it:
+
+| Machine | What it is | Settings that apply |
+|---|---|---|
+| **Floppy disk Atom** | the standard disk Atom: 8271 controller, Atom DOS (the default) | Main RAM |
+| **Floppy disk Atom with GDOS/ADOS** | the WD1770 disk system | Main RAM, GDOS ROM bank |
+| **SD card (AtoMMC)** | a folder is the SD card; includes the RAM/ROM board | card folder |
+| **BBC BASIC** | BBC BASIC 2, through the RAM/ROM board | none |
+
+*Video RAM* and *Colour board* apply to all of them. Main RAM is only
+choosable on the two floppy machines: the SD card and BBC BASIC machines have the
+RAM/ROM board, which provides all the RAM, so the menu says so and points you to
+a floppy machine. The sections below describe each in turn.
+
 ### Memory
 
-**Hardware > Main RAM** fits one of Atomulator's six RAM configurations and
+**Hardware > Main RAM** (on the floppy disk machines) fits one of Atomulator's six RAM configurations and
 restarts the Atom (what is in RAM is kept, as when swapping chips on a real
 Atom):
 
@@ -325,12 +344,12 @@ without the colour board would (the refresh rate stays as it is).
 Address ranges with no RAM read as open bus. You can see the difference: on a
 bare 1K Atom BASIC keeps its programs in the spare video RAM (type `PRINT TOP`:
 33282, which is `8202`), while with any of the larger sizes it is 10498 (`2902`).
-Many programs need the larger sizes. In SD card mode the choice is not available:
-the RAM/ROM board provides RAM everywhere.
+Many programs need the larger sizes. On the SD card and BBC BASIC machines the choice is not available: the
+RAM/ROM board provides RAM everywhere.
 
 ### GDOS/ADOS 2015 (WD1770 disks)
 
-**Hardware > GDOS/ADOS 2015** fits the other disk system the Atom had: a
+**Hardware > Machine > Floppy disk Atom with GDOS/ADOS** fits the other disk system the Atom had: a
 Western Digital WD1770 controller (at `BC10`) with the GDOS/ADOS ROM, instead of
 the standard Intel 8271 and Atom DOS. The same disk images (`--disk`, or *Disks*
 below) work in it. Type `*DOS` to start it (it answers `ADOS-1770 BC10:1000`),
@@ -344,13 +363,12 @@ laying out the sectors.
 
 ### BBC BASIC
 
-**Hardware > BBC BASIC board** restarts the Atom as a BBC BASIC machine. The
+**Hardware > Machine > BBC BASIC** restarts the Atom as a BBC BASIC machine. The
 Ramoth RAM/ROM board's BBC mode swaps in BBC BASIC 2 and a small BBC operating
 system ("ATOM MOS V3.0 HOGLET"), using the ROM images in `ramrom.rom`. The
 screen is a graphics screen the BBC OS writes its own text into. It works in
 either machine mode (in SD card mode only the board's jumper changes). As on the
-real board, the floppy disk system is not available in BBC mode. Untick the same
-item to go back. Quick check: `PRINT PI` gives 3.14159265.
+real board, the floppy disk system is not available in BBC mode. Choose another machine to go back. Quick check: `PRINT PI` gives 3.14159265.
 
 ### Tape
 

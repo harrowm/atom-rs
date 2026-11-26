@@ -12,6 +12,7 @@ use super::keymap::{KeyMap, Target};
 use crate::cli::Options;
 use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
+use atom_rs::machine::atom::Machine;
 use atom_rs::machine::autoplay::TapeAutoplay;
 use atom_rs::machine::debug::StopReason;
 use atom_rs::machine::disk::DiskImage;
@@ -74,6 +75,9 @@ pub struct AtomApp {
     keymap: KeyMap,
     /// Do the arrow keys and Space act as a joystick (Input menu)?
     joystick_keys: bool,
+    /// The folder last used as an SD card, so switching back to the SD card
+    /// machine does not ask again.
+    card_folder: Option<PathBuf>,
     /// Is the colour board fitted? (Without it the picture is grey.)
     colour_board: bool,
     keyboard_window: KeyboardWindow,
@@ -118,6 +122,7 @@ impl AtomApp {
             quick_state: None,
             keymap: KeyMap::default(),
             joystick_keys: false,
+            card_folder: None,
             colour_board: true,
             keyboard_window: KeyboardWindow::default(),
             typist: Typist::new(),
@@ -218,6 +223,7 @@ impl AtomApp {
 
     /// Switch to an Atom with an AtoMMC SD card whose files are in `folder`.
     fn use_sd_card(&mut self, folder: PathBuf) {
+        self.card_folder = Some(folder.clone());
         self.notice = Some(match self.atom.use_sd_card(&self.rom_dir, folder.clone()) {
             Ok(()) => format!(
                 "SD card: {}. Try *CAT, or *MENU for the software archive.",
@@ -233,6 +239,35 @@ impl AtomApp {
             .pick_folder()
         {
             self.use_sd_card(folder);
+        }
+    }
+
+    /// Hardware > Machine: become a different kind of Atom. The SD card machine
+    /// needs a folder: the one used last, or else ask.
+    fn switch_machine(&mut self, machine: Machine) {
+        if let Some(folder) = self.atom.bus.atommc.card_folder() {
+            self.card_folder = Some(folder.to_path_buf()); // remember it on the way out
+        }
+        let mut folder = self.card_folder.clone();
+        if machine == Machine::SdCard && folder.is_none() {
+            folder = rfd::FileDialog::new()
+                .set_title("Folder to use as the SD card")
+                .pick_folder();
+            if folder.is_none() {
+                return; // cancelled: stay as we are
+            }
+        }
+        match self
+            .atom
+            .set_machine(machine, &self.rom_dir, folder.as_deref())
+        {
+            Ok(()) => {
+                if machine == Machine::SdCard {
+                    self.card_folder = folder;
+                }
+                self.notice = Some(format!("Now: {}", machine.label()));
+            }
+            Err(message) => self.notice = Some(format!("Cannot switch: {message}")),
         }
     }
 
@@ -843,8 +878,11 @@ impl AtomApp {
             });
             ui.menu_button("Disk", |ui| {
                 if self.atom.bus.atommc.card_folder().is_some() {
-                    ui.label("SD card (AtoMMC) mode: no floppy drives.");
-                    ui.label("Use File > Back to floppy disks to return.");
+                    ui.label("SD card (AtoMMC) machine: no floppy drives.");
+                    ui.label("Use Hardware > Machine to switch to a floppy disk Atom.");
+                } else if self.atom.machine() == Machine::BbcBasic {
+                    ui.label("BBC BASIC machine: no floppy drives.");
+                    ui.label("Use Hardware > Machine to switch to a floppy disk Atom.");
                 } else if !self.atom.bus.memory.disk_interface_fitted {
                     ui.label("No disk ROM loaded (dosrom.rom)");
                 }
@@ -896,25 +934,53 @@ impl AtomApp {
                 ui.label("Sound plays at normal speed or slower.");
             });
             ui.menu_button("Hardware", |ui| {
-                ui.checkbox(&mut self.colour_board, "Colour board");
-                self.atom.bus.framebuffer.monochrome = !self.colour_board;
-                let board_fitted = self.atom.bus.memory.board.is_some();
-                let mut gdos = self.atom.gdos_active();
-                if ui
-                    .add_enabled(
-                        !board_fitted,
-                        egui::Checkbox::new(&mut gdos, "GDOS/ADOS 2015 (WD1770 disks)"),
-                    )
-                    .on_hover_text("Restarts the Atom with the GDOS disk system")
-                    .clicked()
-                {
-                    self.notice = if gdos {
-                        self.atom.use_gdos(&self.rom_dir).err()
-                    } else {
-                        self.atom.use_floppy_disks(&self.rom_dir).err()
-                    };
+                ui.set_max_width(330.0);
+                let machine = self.atom.machine();
+
+                // The kind of Atom comes first: everything below depends on it.
+                ui.label(egui::RichText::new("Machine").strong());
+                for choice in Machine::ALL {
+                    let response = ui
+                        .radio(machine == choice, choice.label())
+                        .on_hover_text(choice.description());
+                    if response.clicked() && machine != choice {
+                        self.switch_machine(choice);
+                        ui.close();
+                    }
                 }
-                ui.add_enabled_ui(self.atom.gdos_active(), |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(machine.description()).weak()).wrap());
+                ui.label(egui::RichText::new("Changing the machine restarts the Atom.").weak());
+                ui.separator();
+
+                // Then the settings that belong to this machine.
+                ui.label(
+                    egui::RichText::new(format!("Settings for: {}", machine.label())).strong(),
+                );
+                match machine {
+                    Machine::FloppyAtom | Machine::GdosAtom => {
+                        ui.menu_button("Main RAM", |ui| {
+                            let current = self.atom.bus.memory.ram_preset();
+                            for preset in RamPreset::ALL {
+                                let choice =
+                                    egui::RadioButton::new(current == preset, preset.label());
+                                if ui.add(choice).clicked() {
+                                    self.notice = self.atom.set_ram_preset(preset).err();
+                                    ui.close();
+                                }
+                            }
+                            ui.separator();
+                            ui.label("Changing it restarts the Atom.");
+                        });
+                    }
+                    Machine::SdCard | Machine::BbcBasic => {
+                        ui.label("Main RAM: all 23K, from the RAM/ROM board.");
+                        ui.label(
+                            egui::RichText::new("(Choose a floppy disk machine to change it.)")
+                                .weak(),
+                        );
+                    }
+                }
+                if machine == Machine::GdosAtom {
                     ui.menu_button("GDOS ROM bank", |ui| {
                         let current = self.atom.bus.memory.gdos_bank();
                         for bank in 0..GDOS_BANKS {
@@ -927,16 +993,20 @@ impl AtomApp {
                             }
                         }
                     });
-                });
-                let mut bbc = self.atom.bbc_basic_active();
-                if ui
-                    .checkbox(&mut bbc, "BBC BASIC board")
-                    .on_hover_text("Restarts the Atom as a BBC BASIC machine")
-                    .clicked()
-                {
-                    self.notice = self.atom.set_bbc_basic(bbc, &self.rom_dir).err();
-                    ui.close();
                 }
+                if machine == Machine::SdCard {
+                    if let Some(folder) = self.atom.bus.atommc.card_folder() {
+                        ui.label(format!("Card folder: {}", folder.display()));
+                    }
+                    if ui.button("Choose another card folder...").clicked() {
+                        self.choose_sd_card();
+                        ui.close();
+                    }
+                }
+                ui.separator();
+
+                // Settings every machine has.
+                ui.label(egui::RichText::new("Display").strong());
                 ui.menu_button("Video RAM", |ui| {
                     let current = self.atom.bus.memory.video_ram_kb();
                     for kb in 1..=MAX_VIDEO_RAM_KB {
@@ -949,23 +1019,8 @@ impl AtomApp {
                     ui.separator();
                     ui.label("Graphics modes need more: 6K for the biggest.");
                 });
-                ui.menu_button("Main RAM", |ui| {
-                    let current = self.atom.bus.memory.ram_preset();
-                    let board_fitted = self.atom.bus.memory.board.is_some();
-                    for preset in RamPreset::ALL {
-                        let choice = egui::RadioButton::new(current == preset, preset.label());
-                        if ui.add_enabled(!board_fitted, choice).clicked() {
-                            self.notice = self.atom.set_ram_preset(preset).err();
-                            ui.close();
-                        }
-                    }
-                    ui.separator();
-                    if board_fitted {
-                        ui.label("In SD card mode the RAM/ROM board provides RAM everywhere.");
-                    } else {
-                        ui.label("Changing it restarts the Atom.");
-                    }
-                });
+                ui.checkbox(&mut self.colour_board, "Colour board");
+                self.atom.bus.framebuffer.monochrome = !self.colour_board;
             });
             ui.menu_button("Input", |ui| {
                 ui.checkbox(&mut self.joystick_keys, "Joystick on the keyboard");
@@ -1009,12 +1064,18 @@ impl AtomApp {
                 ui.separator();
                 ui.colored_label(egui::Color32::LIGHT_GREEN, text);
             }
-            if let Some(folder) = self.atom.bus.atommc.card_folder() {
-                ui.separator();
-                let name = folder
-                    .file_name()
-                    .map_or_else(|| "?".into(), |n| n.to_string_lossy());
-                ui.label(format!("SD: {name}"));
+            ui.separator();
+            let machine = self.atom.machine();
+            match self.atom.bus.atommc.card_folder() {
+                Some(folder) if machine == Machine::SdCard => {
+                    let name = folder
+                        .file_name()
+                        .map_or_else(|| "?".into(), |n| n.to_string_lossy());
+                    ui.label(format!("{}: {name}", machine.label()));
+                }
+                _ => {
+                    ui.label(machine.label());
+                }
             }
             let tape = &self.atom.bus.tape;
             if tape.recording {
