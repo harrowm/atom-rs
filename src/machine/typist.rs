@@ -93,6 +93,15 @@ impl Typist {
         }
     }
 
+    /// Forget everything still waiting to be typed, and let go of any key. For
+    /// when the machine is restarted as a different one: the rest of a command
+    /// meant for the old machine must not be typed into the new one.
+    pub fn cancel(&mut self) {
+        self.pending.clear();
+        self.urgent = 0;
+        self.phase = Phase::Idle;
+    }
+
     /// How many characters are still waiting to be typed.
     pub fn remaining(&self) -> usize {
         self.pending.len()
@@ -324,5 +333,25 @@ mod tests {
         assert!(typist.is_busy());
         run(&mut typist, 40);
         assert!(!typist.is_busy());
+    }
+
+    #[test]
+    fn cancel_forgets_the_rest_of_the_text_and_releases_the_key() {
+        let mut typist = Typist::new();
+        let mut keyboard = Keyboard::default();
+        typist.type_text("ABC\n", 0);
+        // Start pressing the first key.
+        typist.update(&mut keyboard, 10, true);
+        assert!(typist.is_busy());
+        typist.cancel();
+        assert!(!typist.is_busy());
+        assert_eq!(typist.remaining(), 0);
+        // And nothing more is pressed afterwards.
+        let mut quiet = Keyboard::default();
+        for frame in 11..60 {
+            typist.update(&mut quiet, frame, true);
+        }
+        assert_eq!(quiet.read_port_b(0), 0xFF, "no key down in row 0");
+        assert_eq!(quiet.read_port_b(6), 0xFF, "or in row 6");
     }
 }

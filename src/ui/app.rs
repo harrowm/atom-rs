@@ -223,6 +223,7 @@ impl AtomApp {
 
     /// Switch to an Atom with an AtoMMC SD card whose files are in `folder`.
     fn use_sd_card(&mut self, folder: PathBuf) {
+        self.typist.cancel();
         self.card_folder = Some(folder.clone());
         self.notice = Some(match self.atom.use_sd_card(&self.rom_dir, folder.clone()) {
             Ok(()) => format!(
@@ -245,6 +246,9 @@ impl AtomApp {
     /// Hardware > Machine: become a different kind of Atom. The SD card machine
     /// needs a folder: the one used last, or else ask.
     fn switch_machine(&mut self, machine: Machine) {
+        // Typing queued for the old machine (a --run command still going, say)
+        // must not carry on into the new one.
+        self.typist.cancel();
         if let Some(folder) = self.atom.bus.atommc.card_folder() {
             self.card_folder = Some(folder.to_path_buf()); // remember it on the way out
         }
@@ -272,6 +276,7 @@ impl AtomApp {
     }
 
     fn use_floppy_disks(&mut self) {
+        self.typist.cancel();
         self.notice = Some(match self.atom.use_floppy_disks(&self.rom_dir) {
             Ok(()) => "Back to floppy disks (Atom DOS)".to_string(),
             Err(message) => format!("Cannot switch back: {message}"),
@@ -964,6 +969,7 @@ impl AtomApp {
                                 let choice =
                                     egui::RadioButton::new(current == preset, preset.label());
                                 if ui.add(choice).clicked() {
+                                    self.typist.cancel();
                                     self.notice = self.atom.set_ram_preset(preset).err();
                                     ui.close();
                                 }
@@ -987,6 +993,7 @@ impl AtomApp {
                             let choice =
                                 egui::RadioButton::new(current == bank, format!("Bank {bank:02}"));
                             if ui.add(choice).clicked() {
+                                self.typist.cancel();
                                 self.atom.bus.memory.set_gdos_bank(bank);
                                 self.atom.reset();
                                 ui.close();
