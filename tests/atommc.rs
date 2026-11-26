@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
+use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::typist::Typist;
 
 const ROM_DIR: &str = "roms";
@@ -34,6 +35,16 @@ impl Card {
         file.extend((data.len() as u16).to_le_bytes());
         file.extend(data);
         fs::write(self.0.join(name), file).unwrap();
+    }
+}
+
+impl Card {
+    /// Put a disk image on the card holding one file, `HELLO`, which loads
+    /// at 2900.
+    fn add_disk_with_a_file(&self, name: &str, data: &[u8]) {
+        let mut disk = DiskImage::blank_80_track(1);
+        disk.add_file("HELLO", 0x2900, 0x2900, data).unwrap();
+        fs::write(self.0.join(name), disk.to_bytes()).unwrap();
     }
 }
 
@@ -158,5 +169,96 @@ fn going_back_to_floppy_disks_restores_atom_dos() {
     assert!(
         screen.contains("ACORN ATOM") && !screen.contains("ATOMMC"),
         "{screen}"
+    );
+}
+
+// ---- SDDOS: disk images on the card, used as floppy disks ---------------------------
+
+const HELLO_DATA: [u8; 8] = [0xA9, 0x41, 0x20, 0xF4, 0xFF, 0x60, 0x11, 0x22];
+
+#[test]
+fn sddos_mounts_a_disk_image_from_the_card_and_lists_it() {
+    let card = Card::new("sddos-cat");
+    card.add_disk_with_a_file("TEST.SSD", &HELLO_DATA);
+    let Some(mut atom) = atom_with_card(&card.0) else {
+        return;
+    };
+    run_command(&mut atom, "SDDOS\n"); // switches SDDOS on (no star)
+    run_command(&mut atom, "*DIN 0 TEST.SSD\n");
+    run_command(&mut atom, "*.\n");
+    let screen = atom.screen_text().join("\n");
+    assert!(
+        screen.contains("HELLO"),
+        "the image's file is not listed:\n{screen}"
+    );
+}
+
+#[test]
+fn sddos_loads_a_file_from_the_image() {
+    let card = Card::new("sddos-load");
+    card.add_disk_with_a_file("TEST.SSD", &HELLO_DATA);
+    let Some(mut atom) = atom_with_card(&card.0) else {
+        return;
+    };
+    run_command(&mut atom, "SDDOS\n");
+    run_command(&mut atom, "*DIN 0 TEST.SSD\n");
+    run_command(&mut atom, "*LOAD HELLO\n");
+    let loaded: Vec<u8> = (0..HELLO_DATA.len())
+        .map(|i| atom.bus.peek(0x2900 + i as u16))
+        .collect();
+    assert_eq!(loaded, HELLO_DATA, "\n{}", atom.screen_text().join("\n"));
+}
+
+#[test]
+fn sddos_saves_a_file_into_the_image_on_the_card() {
+    let card = Card::new("sddos-save");
+    card.add_disk_with_a_file("TEST.SSD", &HELLO_DATA);
+    let Some(mut atom) = atom_with_card(&card.0) else {
+        return;
+    };
+    let program: Vec<u8> = (0..16).map(|i| 0x30 + i).collect();
+    for (i, &byte) in program.iter().enumerate() {
+        atom.bus.poke(0x3000 + i as u16, byte);
+    }
+    run_command(&mut atom, "SDDOS\n");
+    run_command(&mut atom, "*DIN 0 TEST.SSD\n");
+    run_command(&mut atom, "*SAVE WORLD 3000 3010\n");
+
+    // The image file on the host now has the new file in its catalogue.
+    let image = DiskImage::from_bytes(fs::read(card.0.join("TEST.SSD")).unwrap(), 1).unwrap();
+    let names: Vec<String> = image.catalogue().iter().map(|f| f.name.clone()).collect();
+    assert!(
+        names.iter().any(|n| n == "WORLD") && names.iter().any(|n| n == "HELLO"),
+        "catalogue is {names:?}\n{}",
+        atom.screen_text().join("\n")
+    );
+}
+
+#[test]
+fn sddos_remembers_the_mounted_images_next_time() {
+    let card = Card::new("sddos-remember");
+    card.add_disk_with_a_file("TEST.SSD", &HELLO_DATA);
+    {
+        let Some(mut atom) = atom_with_card(&card.0) else {
+            return;
+        };
+        run_command(&mut atom, "SDDOS\n");
+        run_command(&mut atom, "*DIN 0 TEST.SSD\n");
+    }
+    assert!(
+        card.0.join("BOOTDRV.CFG").exists(),
+        "the list is saved on the card"
+    );
+
+    // A new Atom (a power-on) on the same card: SDDOS brings the drive back.
+    let Some(mut atom) = atom_with_card(&card.0) else {
+        return;
+    };
+    run_command(&mut atom, "SDDOS\n");
+    run_command(&mut atom, "*.\n");
+    let screen = atom.screen_text().join("\n");
+    assert!(
+        screen.contains("HELLO"),
+        "drive 0 was not remounted:\n{screen}"
     );
 }

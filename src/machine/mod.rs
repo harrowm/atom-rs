@@ -16,6 +16,7 @@ pub mod keyboard;
 pub mod memory;
 pub mod ppi8255;
 pub mod ramrom;
+pub mod sddos;
 pub mod sid;
 pub mod snapshot;
 pub mod sound;

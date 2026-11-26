@@ -119,8 +119,24 @@ Utilikit and pressing BREAK, `COLD` prints its copyright line. The ROM
 survives BREAK; it goes when you leave SD card mode or reset the whole machine.
 Bank 8 onwards of the board's ROM and its BBC BASIC mode are not emulated.
 
-Not emulated yet: SDDOS (disk images stored on the card), so games that insist
-on a floppy still use the disk method below.
+**Disk images on the card (SDDOS).** Floppy disk images (`.ssd`) can live on the
+card and be used as drives, with Kees van Oss's SDDOS, which is in the ROM
+image. Put the image in the card folder (and `*CWD` to its folder), then:
+
+```
+SDDOS                  switch it on (no star)
+*DIN 0 GAME.SSD       mount GAME.SSD as drive 0 (drives 0-3)
+*.                    the usual disk commands now use it: *LOAD, *RUN, *SAVE...
+*DHELP                list SDDOS's commands (*DOUT unmounts, *DCAT lists images)
+```
+
+What you `*SAVE` is written into the image file itself. The mounted images are
+remembered in a small file, `BOOTDRV.CFG`, in the card's top folder, and come
+back the next time you type `SDDOS`. (That means the emulator writes that one
+file into whatever folder you use as the card.) A read-only image mounts but
+refuses writes. Known issue: Chuckie Egg's loader (`RUNME`, from the archive)
+stops with a BASIC error under SDDOS, though it runs from the SD card directly
+and from a floppy disk image; I have not found out why.
 
 ### Running single games from disk images (the manual way)
 

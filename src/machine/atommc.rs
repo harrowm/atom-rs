@@ -43,6 +43,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use super::memory::open_bus;
+use super::sddos::{self, Drives};
 
 /// Register numbers (the low three address bits).
 mod register {
@@ -70,6 +71,8 @@ mod command {
     pub const FILE_GET_INFO: u8 = 0x15;
     pub const FILE_SEEK: u8 = 0x16;
     pub const FILE_OPEN_RANDOM_ACCESS: u8 = 0x17;
+    /// Mount a disk image as a drive, for SDDOS (see `sddos.rs`).
+    pub const FILE_OPEN_IMAGE: u8 = 0x12;
 
     // The data group (bits 2-3 carry a file number).
     pub const INIT_READ: u8 = 0x20;
@@ -78,6 +81,16 @@ mod command {
     pub const WRITE_BYTES: u8 = 0x23;
 
     pub const EXEC_PACKET: u8 = 0x3F;
+
+    // The SDDOS group: disk images used as drives (see `sddos.rs`).
+    pub const LOAD_POSITION: u8 = 0x40;
+    pub const GET_IMAGE_STATUS: u8 = 0x41;
+    pub const GET_IMAGE_NAMES: u8 = 0x42;
+    pub const READ_IMAGE_SECTOR: u8 = 0x43;
+    pub const WRITE_IMAGE_SECTOR: u8 = 0x44;
+    pub const SAVE_IMAGE_LIST: u8 = 0x45;
+    pub const RESTORE_IMAGE_LIST: u8 = 0x46;
+    pub const UNMOUNT_IMAGE: u8 = 0x47;
 
     pub const GET_CARD_TYPE: u8 = 0x80;
     pub const GET_PORT_DDR: u8 = 0xA0;
@@ -497,6 +510,8 @@ pub struct AtoMmc {
     pub joystick: Option<u8>,
 
     card: Option<Card>,
+    /// The disk images mounted as drives by SDDOS.
+    drives: Drives,
 }
 
 impl Default for AtoMmc {
@@ -516,6 +531,7 @@ impl Default for AtoMmc {
             port_output: 0,
             joystick: None,
             card: None,
+            drives: Drives::default(),
         }
     }
 }
@@ -540,6 +556,7 @@ impl AtoMmc {
     /// Take the card away: back to only the joystick port answering.
     pub fn remove_card(&mut self) {
         self.card = None;
+        self.drives = Drives::default();
         self.reset();
     }
 
@@ -692,6 +709,26 @@ impl AtoMmc {
             command::FILE_GET_INFO => self.file_get_info(),
             command::FILE_SEEK => self.file_seek(),
             command::EXEC_PACKET => self.execute_packet(),
+
+            command::FILE_OPEN_IMAGE => self.image_mount(),
+            // This one gets no reply: the ROM does not wait for one.
+            command::LOAD_POSITION => self.image_load_position(),
+            command::GET_IMAGE_STATUS => {
+                self.data_port = Some(self.drives.status(usize::from(self.value_latch)));
+            }
+            command::GET_IMAGE_NAMES => self.image_names(),
+            command::READ_IMAGE_SECTOR => self.image_read_sector(),
+            command::WRITE_IMAGE_SECTOR => self.image_write_sector(),
+            command::SAVE_IMAGE_LIST => {
+                self.save_image_list();
+                self.data_port = Some(status::OK);
+            }
+            command::RESTORE_IMAGE_LIST => self.image_restore_list(),
+            command::UNMOUNT_IMAGE => {
+                self.drives.unmount(usize::from(self.value_latch));
+                self.save_image_list();
+                self.data_port = Some(status::OK);
+            }
 
             command::GET_CARD_TYPE => self.data_port = Some(1), // "MMC"
             command::GET_PORT_DDR => self.data_port = Some(self.port_direction),
@@ -891,6 +928,108 @@ impl AtoMmc {
             None => Err(error::INVALID_OBJECT),
         };
         self.data_port = Some(status::COMPLETE | result.err().unwrap_or(error::NONE));
+    }
+
+    // ---- SDDOS: disk images as drives ---------------------------------------------
+
+    /// Mount an image. The buffer holds the drive number, then the image's
+    /// name. Replies with the image's attribute byte, or "complete" and an
+    /// error (which also leaves the drive empty).
+    fn image_mount(&mut self) {
+        let drive = usize::from(self.buffer[0] & 3);
+        let name: String = self.buffer[1..]
+            .iter()
+            .take_while(|&&b| b != 0)
+            .take(sddos::NAME_LENGTH + 1)
+            .map(|&b| b as char)
+            .collect();
+        let reply = match self.mount_image(drive, &name) {
+            Ok(attributes) => attributes,
+            Err(code) => status::COMPLETE | code,
+        };
+        self.save_image_list();
+        self.data_port = Some(reply);
+    }
+
+    /// Find `name` on the card (in the current folder) and mount it.
+    fn mount_image(&mut self, drive: usize, name: &str) -> Result<u8, u8> {
+        let Some(card) = &self.card else {
+            return Err(error::INVALID_OBJECT);
+        };
+        let (path, _) = card.resolve_file(name)?;
+        self.drives.mount(drive, name, &path)
+    }
+
+    /// Choose the drive and sector the next read or write uses: the buffer
+    /// holds the drive number, then the sector number (4 bytes, 256-byte
+    /// sectors counted from the start of the image).
+    fn image_load_position(&mut self) {
+        let sector = u32::from_le_bytes([
+            self.buffer[1],
+            self.buffer[2],
+            self.buffer[3],
+            self.buffer[4],
+        ]);
+        self.drives
+            .load_position(usize::from(self.buffer[0] & 3), sector);
+    }
+
+    /// The four image names, each ended by a zero (empty for an empty drive).
+    fn image_names(&mut self) {
+        let mut at = 0;
+        for name in self.drives.names() {
+            for byte in name.bytes() {
+                self.buffer[at] = byte;
+                at += 1;
+            }
+            self.buffer[at] = 0;
+            at += 1;
+        }
+        self.data_port = Some(status::OK);
+    }
+
+    fn image_read_sector(&mut self) {
+        self.data_port = Some(match self.drives.read_sector(&mut self.buffer) {
+            Ok(()) => status::OK,
+            Err(code) => status::COMPLETE | code,
+        });
+    }
+
+    fn image_write_sector(&mut self) {
+        self.data_port = Some(match self.drives.write_sector(&self.buffer) {
+            Ok(()) => status::OK,
+            Err(code) => status::COMPLETE | code,
+        });
+    }
+
+    /// Remember the mounted images in `BOOTDRV.CFG` on the card.
+    fn save_image_list(&self) {
+        if let Some(card) = &self.card {
+            // If the card cannot be written, the drives still work this time.
+            let _ = fs::write(
+                card.root.join(sddos::CONFIG_FILE),
+                self.drives.config_bytes(),
+            );
+        }
+    }
+
+    /// Mount again whatever `BOOTDRV.CFG` says was mounted, dropping any
+    /// image that has gone.
+    fn image_restore_list(&mut self) {
+        let saved = self
+            .card
+            .as_ref()
+            .and_then(|card| fs::read(card.root.join(sddos::CONFIG_FILE)).ok())
+            .unwrap_or_default();
+        for (drive, name) in sddos::names_in_config(&saved).into_iter().enumerate() {
+            self.drives.unmount(drive);
+            if let Some(name) = name {
+                // An image that cannot be found any more is simply dropped.
+                let _ = self.mount_image(drive, &name);
+            }
+        }
+        self.save_image_list();
+        self.data_port = Some(status::OK);
     }
 
     /// "Execute packet": the only packets are read and write of the EEPROM.
@@ -1344,10 +1483,181 @@ mod tests {
         assert_eq!(command(&mut mmc, command::GET_CONFIG_BYTE), 0x5A);
     }
 
+    // ---- SDDOS: disk images as drives ------------------------------------------------
+
+    /// Send raw bytes to the buffer, as the ROM does before a command.
+    fn send_bytes(mmc: &mut AtoMmc, bytes: &[u8]) {
+        command(mmc, command::INIT_WRITE);
+        for &byte in bytes {
+            mmc.write(WRITE_DATA, byte);
+        }
+    }
+
+    /// A card holding a 4-sector image in which sector `s` is full of `s + 1`.
+    fn card_with_an_image() -> (TempFolder, AtoMmc) {
+        let folder = TempFolder::new("sddos");
+        let data: Vec<u8> = (0..4).flat_map(|s| vec![s as u8 + 1; 256]).collect();
+        fs::write(folder.0.join("DISK.SSD"), data).unwrap();
+        let mmc = AtoMmc::with_card(folder.0.clone());
+        (folder, mmc)
+    }
+
+    fn mount(mmc: &mut AtoMmc, drive: u8, name: &str) -> u8 {
+        let mut bytes = vec![drive];
+        bytes.extend(name.bytes());
+        bytes.push(0);
+        send_bytes(mmc, &bytes);
+        command(mmc, command::FILE_OPEN_IMAGE)
+    }
+
+    fn read_image_sector(mmc: &mut AtoMmc, drive: u8, sector: u32) -> (u8, Vec<u8>) {
+        let mut position = vec![drive];
+        position.extend(sector.to_le_bytes());
+        send_bytes(mmc, &position);
+        mmc.write(COMMAND, command::LOAD_POSITION);
+        let reply = command(mmc, command::READ_IMAGE_SECTOR);
+        (reply, fetch(mmc, 256))
+    }
+
+    #[test]
+    fn mounting_an_image_replies_with_its_attributes() {
+        let (_folder, mut mmc) = card_with_an_image();
+        assert_eq!(
+            mount(&mut mmc, 0, "disk.ssd"),
+            0x20,
+            "found, whatever the case"
+        );
+        mmc.write(LATCH, 0);
+        assert_eq!(command(&mut mmc, command::GET_IMAGE_STATUS), 0x20);
+        mmc.write(LATCH, 1);
+        assert_eq!(
+            command(&mut mmc, command::GET_IMAGE_STATUS),
+            0xFF,
+            "drive 1 is empty"
+        );
+    }
+
+    #[test]
+    fn mounting_a_missing_or_badly_named_image_fails_and_leaves_the_drive_empty() {
+        let (_folder, mut mmc) = card_with_an_image();
+        assert_eq!(mount(&mut mmc, 0, "NOPE.SSD"), status::COMPLETE | 0x04);
+        assert_eq!(
+            mount(&mut mmc, 0, "WAYTOOLONGNAME.SSD"),
+            status::COMPLETE | 0x06
+        );
+        mmc.write(LATCH, 0);
+        assert_eq!(command(&mut mmc, command::GET_IMAGE_STATUS), 0xFF);
+    }
+
+    #[test]
+    fn the_same_image_cannot_be_in_two_drives() {
+        let (_folder, mut mmc) = card_with_an_image();
+        assert_eq!(mount(&mut mmc, 0, "DISK.SSD"), 0x20);
+        assert_eq!(mount(&mut mmc, 1, "DISK.SSD"), status::COMPLETE | 0x0A);
+    }
+
+    #[test]
+    fn reads_sectors_of_a_mounted_image() {
+        let (_folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 2, "DISK.SSD");
+        let (reply, data) = read_image_sector(&mut mmc, 2, 0);
+        assert_eq!(reply, status::OK);
+        assert_eq!(data, vec![1; 256]);
+        let (reply, data) = read_image_sector(&mut mmc, 2, 3);
+        assert_eq!((reply, data[0], data[255]), (status::OK, 4, 4));
+    }
+
+    #[test]
+    fn reading_an_empty_drive_is_an_error() {
+        let (_folder, mut mmc) = card_with_an_image();
+        let (reply, _) = read_image_sector(&mut mmc, 3, 0);
+        assert_eq!(reply, status::COMPLETE | 0x09);
+    }
+
+    #[test]
+    fn writes_a_sector_into_the_image_file() {
+        let (folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 0, "DISK.SSD");
+        let mut position = vec![0];
+        position.extend(1u32.to_le_bytes());
+        send_bytes(&mut mmc, &position);
+        mmc.write(COMMAND, command::LOAD_POSITION);
+        send_bytes(&mut mmc, &[0xAB; 256]);
+        assert_eq!(command(&mut mmc, command::WRITE_IMAGE_SECTOR), status::OK);
+        let file = fs::read(folder.0.join("DISK.SSD")).unwrap();
+        assert_eq!(&file[256..512], &[0xAB; 256]);
+        assert_eq!(&file[0..256], &[1; 256], "its neighbours are untouched");
+    }
+
+    #[test]
+    fn setting_the_position_gets_no_reply() {
+        // The ROM does not wait for one, and the real firmware gives none.
+        let (_folder, mut mmc) = card_with_an_image();
+        send_bytes(&mut mmc, &[0, 0, 0, 0, 0]);
+        mmc.write(COMMAND, command::LOAD_POSITION);
+        assert_eq!(mmc.read(COMMAND), status::BUSY);
+    }
+
+    #[test]
+    fn lists_the_image_names_with_empty_drives_as_empty_strings() {
+        let (_folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 1, "DISK.SSD");
+        assert_eq!(command(&mut mmc, command::GET_IMAGE_NAMES), status::OK);
+        assert_eq!(fetch(&mut mmc, 12), b"\0DISK.SSD\0\0\0");
+    }
+
+    #[test]
+    fn unmounting_empties_the_drive() {
+        let (_folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 0, "DISK.SSD");
+        mmc.write(LATCH, 0);
+        assert_eq!(command(&mut mmc, command::UNMOUNT_IMAGE), status::OK);
+        mmc.write(LATCH, 0);
+        assert_eq!(command(&mut mmc, command::GET_IMAGE_STATUS), 0xFF);
+    }
+
+    #[test]
+    fn mounted_images_are_remembered_in_bootdrv_cfg_and_come_back() {
+        let (folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 2, "DISK.SSD");
+        let config = fs::read(folder.0.join("BOOTDRV.CFG")).unwrap();
+        assert_eq!(config.len(), 56);
+        assert_eq!(&config[28..35], b"DISK.SSD".get(..7).unwrap());
+
+        // A fresh card interface (a new power-on) knows nothing...
+        let mut again = AtoMmc::with_card(folder.0.clone());
+        again.write(LATCH, 2);
+        assert_eq!(command(&mut again, command::GET_IMAGE_STATUS), 0xFF);
+        // ...until the ROM asks it to restore the list.
+        assert_eq!(command(&mut again, command::RESTORE_IMAGE_LIST), status::OK);
+        again.write(LATCH, 2);
+        assert_eq!(command(&mut again, command::GET_IMAGE_STATUS), 0x20);
+        assert_eq!(read_image_sector(&mut again, 2, 1).1, vec![2; 256]);
+    }
+
+    #[test]
+    fn an_image_that_has_gone_is_dropped_when_the_list_is_restored() {
+        let (folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 0, "DISK.SSD");
+        fs::remove_file(folder.0.join("DISK.SSD")).unwrap();
+        let mut again = AtoMmc::with_card(folder.0.clone());
+        assert_eq!(command(&mut again, command::RESTORE_IMAGE_LIST), status::OK);
+        again.write(LATCH, 0);
+        assert_eq!(command(&mut again, command::GET_IMAGE_STATUS), 0xFF);
+    }
+
+    #[test]
+    fn mounted_drives_survive_a_reset_of_the_atom() {
+        let (_folder, mut mmc) = card_with_an_image();
+        mount(&mut mmc, 0, "DISK.SSD");
+        mmc.reset();
+        mmc.write(LATCH, 0);
+        assert_eq!(command(&mut mmc, command::GET_IMAGE_STATUS), 0x20);
+    }
+
     #[test]
     fn unknown_commands_stay_busy() {
         let (_folder, mut mmc) = card_with_files();
-        // (0x45 is an SDDOS command, which is not emulated.)
-        assert_eq!(command(&mut mmc, 0x45), status::BUSY);
+        assert_eq!(command(&mut mmc, 0x48), status::BUSY);
     }
 }
