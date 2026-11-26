@@ -10,6 +10,7 @@ use super::debug::{AppState, Command, DebugWindows};
 use super::help_window::HelpWindows;
 use super::keyboard_window::KeyboardWindow;
 use super::keymap::{KeyMap, Target};
+use super::screenshot;
 use crate::cli::Options;
 use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
@@ -20,6 +21,7 @@ use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
 use atom_rs::machine::memory::{GDOS_BANKS, MAX_VIDEO_RAM_KB, RamPreset, RomSlot};
+use atom_rs::machine::sid::SidModel;
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
 use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
@@ -80,6 +82,7 @@ pub struct AtomApp {
     keymap: KeyMap,
     /// Do the arrow keys and Space act as a joystick (Input menu)?
     joystick_keys: bool,
+    fullscreen: bool,
     /// After a restart, sound stays off until this time, so the change in the
     /// speaker's level does not click (see [`AtomApp::restart_audio`]).
     audio_hold_until: Option<Instant>,
@@ -131,6 +134,7 @@ impl AtomApp {
             quick_state: None,
             keymap: KeyMap::default(),
             joystick_keys: false,
+            fullscreen: false,
             audio_hold_until: None,
             card_folder: None,
             colour_board: true,
@@ -221,6 +225,40 @@ impl AtomApp {
             audio.clear();
         }
         self.audio_hold_until = Some(Instant::now() + RESTART_AUDIO_HOLD);
+    }
+
+    /// Save the picture on the screen as a PNG. With `choose_file` a dialog asks
+    /// where; otherwise it goes in the current folder with a dated name.
+    fn save_screenshot(&mut self, choose_file: bool) {
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        let name = screenshot::file_name(seconds);
+        let path = if choose_file {
+            let picked = rfd::FileDialog::new()
+                .set_title("Save screenshot")
+                .set_file_name(&name)
+                .add_filter("PNG picture", &["png"])
+                .save_file();
+            let Some(path) = picked else { return };
+            path
+        } else {
+            PathBuf::from(&name)
+        };
+        let rgba = self.atom.bus.framebuffer.to_rgba();
+        self.notice = Some(
+            match screenshot::encode_png(WIDTH as u32, HEIGHT as u32, &rgba)
+                .and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()))
+            {
+                Ok(()) => format!("Screenshot saved: {}", path.display()),
+                Err(message) => format!("Cannot save the screenshot: {message}"),
+            },
+        );
+    }
+
+    fn set_fullscreen(&mut self, ctx: &egui::Context, on: bool) {
+        self.fullscreen = on;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(on));
     }
 
     fn load_roms(&mut self) {
@@ -359,6 +397,16 @@ impl AtomApp {
         // The typist adds its own key presses on top of the real keyboard's.
         self.typist.update(keyboard, frame, ready);
         self.atom.set_joystick(self.joystick_keys.then_some(stick));
+
+        // F10 saves a screenshot, F11 toggles full screen (neither is an Atom key).
+        let (screenshot_key, fullscreen_key) =
+            ctx.input(|i| (i.key_pressed(Key::F10), i.key_pressed(Key::F11)));
+        if screenshot_key {
+            self.save_screenshot(false);
+        }
+        if fullscreen_key {
+            self.set_fullscreen(ctx, !self.fullscreen);
+        }
 
         // F12 is the BREAK key, which resets the machine.
         if break_pressed {
@@ -795,6 +843,14 @@ impl AtomApp {
                     ui.close();
                 }
                 ui.separator();
+                if ui
+                    .button("Save screenshot... (F10 saves at once)")
+                    .clicked()
+                {
+                    self.save_screenshot(true);
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button("Load .atm file into memory...").clicked() {
                     self.load_atm();
                     ui.close();
@@ -925,6 +981,9 @@ impl AtomApp {
                                 self.new_blank_disk(drive);
                                 ui.close();
                             }
+                            if let Some(disk) = self.atom.bus.fdc.drives[drive].as_mut() {
+                                ui.checkbox(&mut disk.write_protected, "Write protected");
+                            }
                             ui.add_enabled_ui(present, |ui| {
                                 if ui.button("Save").clicked() {
                                     self.save_disk(drive, false);
@@ -1050,6 +1109,18 @@ impl AtomApp {
                     &mut self.atom.bus.memory.sid_fitted,
                     "SID sound card (at BDC0)",
                 );
+                ui.add_enabled_ui(self.atom.bus.memory.sid_fitted, |ui| {
+                    ui.menu_button("SID model", |ui| {
+                        let current = self.atom.bus.sid.model();
+                        for model in SidModel::ALL {
+                            let choice = egui::RadioButton::new(current == model, model.label());
+                            if ui.add(choice).clicked() {
+                                self.atom.bus.sid.set_model(model);
+                                ui.close();
+                            }
+                        }
+                    });
+                });
                 ui.menu_button("ROMs", |ui| {
                     ui.menu_button("Load a single ROM", |ui| {
                         for slot in RomSlot::ALL {
@@ -1076,6 +1147,11 @@ impl AtomApp {
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.integer_scaling, "Integer scaling");
+                let mut fullscreen = self.fullscreen;
+                if ui.checkbox(&mut fullscreen, "Full screen (F11)").changed() {
+                    let ctx = ui.ctx().clone();
+                    self.set_fullscreen(&ctx, fullscreen);
+                }
             });
             ui.menu_button("Debug", |ui| {
                 let windows = &mut self.debug_windows;

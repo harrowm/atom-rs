@@ -141,13 +141,13 @@ fn help_sections() -> &'static [Section] {
         Section {
             title: "What each menu does",
             paragraphs: &[
-                "File: save and load the whole machine (save states; F6 and F7 are quick save and load), load a program file, quit.",
+                "File: save and load the whole machine (save states; F6 and F7 are quick save and load), save a screenshot, load a program file, quit.",
                 "Run: reset (F12, the BREAK key), pause, and the speed slider (up to 100 times real speed).",
                 "Tape and Disk: tapes and floppy disk images. Disk is greyed out on machines with no floppy drives.",
                 "Sound: mute and volume. Sound plays at normal speed or slower.",
-                "Hardware: the kind of machine, its RAM, the video RAM, the colour board, the SID sound card, and the ROMs.",
+                "Hardware: the kind of machine, its RAM, the video RAM, the colour board, the SID sound card and its model, and the ROMs.",
                 "Input: the joystick on the keyboard (arrow keys and Space), and the keyboard mapping window.",
-                "View: how the picture is scaled. Debug: windows for the CPU, a disassembler, memory, breakpoints and the chips.",
+                "View: how the picture is scaled, and full screen. Debug: windows for the CPU, a disassembler, memory, breakpoints and the chips.",
             ],
         },
         Section {
@@ -181,6 +181,8 @@ fn key_table() -> &'static [(&'static str, &'static str)] {
         ("Caps Lock, `", "LOCK"),
         ("F12", "BREAK (reset)"),
         ("F6, F7", "quick save, quick load of the whole machine"),
+        ("F10", "save a screenshot (a PNG in the current folder)"),
+        ("F11", "full screen on and off"),
         ("F1", "this help"),
     ]
 }

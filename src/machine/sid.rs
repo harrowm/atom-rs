@@ -20,6 +20,27 @@
 
 use sidera::{ChipModel, Sid as Chip};
 
+/// Which SID chip is fitted. The two sound different: the 8580 is the later,
+/// cleaner chip, with a smoother filter, and tunes can sound quite different
+/// on each. (Atomulator offers many models; sidera has these two.)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SidModel {
+    #[default]
+    Mos6581,
+    Mos8580,
+}
+
+impl SidModel {
+    pub const ALL: [SidModel; 2] = [SidModel::Mos6581, SidModel::Mos8580];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SidModel::Mos6581 => "6581 (the original)",
+            SidModel::Mos8580 => "8580 (the later chip)",
+        }
+    }
+}
+
 /// The card's registers sit here in the Atom's memory.
 pub const FIRST_ADDRESS: u16 = 0xBDC0;
 pub const LAST_ADDRESS: u16 = 0xBDDF;
@@ -35,6 +56,7 @@ const MIX_GAIN: f32 = 0.6 / 32768.0;
 
 pub struct SidCard {
     chip: Chip,
+    model: SidModel,
     sample_rate: u32,
     /// What has been written to each register. The chip's sample rate is fixed
     /// when it is made, so a change of rate builds a new chip and replays these.
@@ -44,7 +66,8 @@ pub struct SidCard {
 impl SidCard {
     pub fn new(sample_rate: u32) -> Self {
         SidCard {
-            chip: new_chip(sample_rate),
+            chip: new_chip(sample_rate, SidModel::default()),
+            model: SidModel::default(),
             sample_rate,
             written: [0; REGISTER_COUNT],
         }
@@ -57,7 +80,24 @@ impl SidCard {
             return;
         }
         self.sample_rate = sample_rate;
-        self.chip = new_chip(sample_rate);
+        self.chip = new_chip(sample_rate, self.model);
+        for (register, &value) in self.written.iter().enumerate() {
+            self.chip.write_register(register as u8, value);
+        }
+    }
+
+    pub fn model(&self) -> SidModel {
+        self.model
+    }
+
+    /// Fit a different SID chip. What has been written to it is kept, so a
+    /// tune carries on playing, now on the new chip.
+    pub fn set_model(&mut self, model: SidModel) {
+        if model == self.model {
+            return;
+        }
+        self.model = model;
+        self.chip = new_chip(self.sample_rate, model);
         for (register, &value) in self.written.iter().enumerate() {
             self.chip.write_register(register as u8, value);
         }
@@ -98,9 +138,12 @@ fn register_number(addr: u16) -> u8 {
     (addr & 0x1F) as u8
 }
 
-fn new_chip(sample_rate: u32) -> Chip {
+fn new_chip(sample_rate: u32, model: SidModel) -> Chip {
     let mut chip = Chip::new(sample_rate);
-    chip.set_model(ChipModel::Mos6581);
+    chip.set_model(match model {
+        SidModel::Mos6581 => ChipModel::Mos6581,
+        SidModel::Mos8580 => ChipModel::Mos8580,
+    });
     chip.set_chip_clock(CHIP_CLOCK_HZ);
     chip
 }
@@ -264,5 +307,40 @@ mod tests {
             loudest < 0.01,
             "reset should silence the chip, got {loudest}"
         );
+    }
+
+    #[test]
+    fn the_two_chips_give_different_combined_waveforms() {
+        // A plain wave is the same on both; the models differ in combined
+        // waveforms (and the filter). Sawtooth + triangle is such a wave.
+        let play = |model: SidModel| {
+            let mut card = SidCard::new(RATE);
+            card.set_model(model);
+            start_tone(&mut card, 440.0, CTRL_SAW | CTRL_TRI);
+            render(&mut card, 0.2);
+            render(&mut card, 0.5)
+        };
+        let (original, later) = (play(SidModel::Mos6581), play(SidModel::Mos8580));
+        assert!(
+            original != later,
+            "the models should give different waveforms"
+        );
+    }
+
+    #[test]
+    fn changing_the_model_keeps_the_note_going_and_reset_keeps_the_model() {
+        let mut card = SidCard::new(RATE);
+        start_tone(&mut card, 440.0, CTRL_SAW);
+        card.set_model(SidModel::Mos8580);
+        render(&mut card, 0.2);
+        let heard = measured_hz(&render(&mut card, 1.0));
+        assert!(
+            (heard - 440.0).abs() < 2.0,
+            "still playing after the swap: {heard} Hz"
+        );
+        card.reset();
+        assert_eq!(card.model(), SidModel::Mos8580);
+        card.set_sample_rate(48_000);
+        assert_eq!(card.model(), SidModel::Mos8580, "and through a rate change");
     }
 }

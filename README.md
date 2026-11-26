@@ -253,6 +253,8 @@ wherever you start the program.
 | F12 | BREAK (reset) |
 | F6, F7 | quick save / quick load of the whole machine |
 | F1 | the built-in help |
+| F10 | save a screenshot (a PNG named by the date and time, in the current folder; **File > Save screenshot...** lets you choose where) |
+| F11 | full screen on and off (also **View > Full screen**; on a Mac the system may keep F11, so use the menu) |
 
 ### Help and About
 
@@ -377,6 +379,13 @@ screen is a graphics screen the BBC OS writes its own text into. It works in
 either machine mode (in SD card mode only the board's jumper changes). As on the
 real board, the floppy disk system is not available in BBC mode. Choose another machine to go back. Quick check: `PRINT PI` gives 3.14159265.
 
+### Disk write protection
+
+Each drive's menu (**Disk > Drive 0**) has a **Write protected** tick, like the
+notch on a real floppy: a protected disk can be read but the Atom's attempts to
+write to it fail with the disk system's "write protected" error. It works on both
+the 8271 and the GDOS (1770) disk systems.
+
 ### Tape
 
 The Atom works like the real machine: `*SAVE "NAME" 2900 2A00` (start and end
@@ -432,7 +441,7 @@ cargo run --release -- --archive --run '*CWD ASA/SID/ATMSID1\n*RUN SIDMENU\n'
 ```
 
 then press **A** or **Z** to choose a tune and **Space** to play it. There is a
-**Hardware > SID sound card** switch in the menu. When a tune plays it costs about
+**Hardware > SID sound card** switch (and **SID model**: the original 6581 or the later 8580, which sound different) in the menu. When a tune plays it costs about
 half the emulator's speed; when nothing uses the SID it costs nothing. Things to
 know: a saved state does not include the SID (it restarts silent), and the chip
 is stepped once per audio sample, so a register write takes effect up to about
