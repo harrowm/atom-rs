@@ -38,8 +38,12 @@
 //!   `0A00` is RAM instead of the floppy controller. With it clear, the
 //!   board's other copy of the BASIC, floating point and kernel ROMs is used
 //!   and `E000` is left to whatever Atom DOS ROM is fitted.
-//! * `BBCMODE` (8): swaps the whole machine over to BBC BASIC. Not emulated
-//!   yet: the bit is kept but has no effect.
+//! * `BBCMODE` (8): swaps the whole machine over to BBC BASIC: the five ROM
+//!   sockets show BBC BASIC (in four 4K pieces, at `A000`, `C000`, `D000` and
+//!   `E000`) and the BBC operating system (at `F000`), and two more ROM
+//!   images are copied into RAM at `6000` and `7000` (the first of them
+//!   chosen by the bank register). Normally this is a jumper on the board
+//!   rather than something a program sets.
 //!
 //! ## The 128K ROM image
 //!
@@ -49,7 +53,9 @@
 //! | `08000-0FFFF` | BBC mode: the eight banks of `6000` |
 //! | `10000` `11000` `12000` `13000` | BASIC, floating point, AtoMMC ROM, kernel (`DISKROM` set) |
 //! | `14000` `15000` `17000` | BASIC, floating point, kernel (`DISKROM` clear) |
-//! | `19000-1F000` | BBC mode: the BBC BASIC and OS ROMs |
+//! | `19000` | BBC mode: the ROM copied to RAM at `7000` |
+//! | `1A000` `1C000` `1D000` `1E000` | BBC mode: BBC BASIC, four 4K pieces |
+//! | `1F000` | BBC mode: the BBC operating system |
 //!
 //! Following Atomulator, which documents the layout in its `roms.h`.
 
@@ -84,6 +90,15 @@ mod offset {
     pub const BASIC_WITHOUT: usize = 0x14000;
     pub const FLOAT_WITHOUT: usize = 0x15000;
     pub const KERNEL_WITHOUT: usize = 0x17000;
+    /// BBC mode: ROMs copied into RAM at 6000 (one of eight banks) and 7000.
+    pub const BBC_RAM_AT_6000_BANKS: usize = 0x08000;
+    pub const BBC_RAM_AT_7000: usize = 0x19000;
+    /// BBC mode: what the five sockets show.
+    pub const BBC_BASIC_1: usize = 0x1A000;
+    pub const BBC_BASIC_2: usize = 0x1C000;
+    pub const BBC_BASIC_3: usize = 0x1D000;
+    pub const BBC_BASIC_4: usize = 0x1E000;
+    pub const BBC_OS: usize = 0x1F000;
 }
 
 #[derive(Clone, Debug)]
@@ -154,7 +169,23 @@ impl RamRomBoard {
 
     /// Is `A000-AFFF` the RAM from `7000-7FFF` (rather than a ROM bank)?
     pub fn utility_block_is_ram(&self) -> bool {
-        self.flag(flag::EXTRAM) && self.bank == 0
+        self.flag(flag::EXTRAM) && self.bank == 0 && !self.bbc_mode()
+    }
+
+    /// Is the machine a BBC BASIC machine?
+    pub fn bbc_mode(&self) -> bool {
+        self.flag(flag::BBCMODE)
+    }
+
+    /// In BBC mode, the two ROMs copied into RAM: the 4K for `6000` (which
+    /// one depends on the bank register) and the 4K for `7000`.
+    pub fn bbc_ram_images(&self) -> (&[u8], &[u8]) {
+        let first = offset::BBC_RAM_AT_6000_BANKS + usize::from(self.bank) * ROM_SIZE;
+        let second = offset::BBC_RAM_AT_7000;
+        (
+            &self.image[first..first + ROM_SIZE],
+            &self.image[second..second + ROM_SIZE],
+        )
     }
 
     /// A byte of the ROM the board puts in `slot`, or `None` if the board
@@ -163,6 +194,16 @@ impl RamRomBoard {
     /// (The utility socket is handled by the caller when it is RAM.)
     pub fn read_rom(&self, slot: RomSlot, addr: u16) -> Option<u8> {
         let disk_rom = self.flag(flag::DISKROM);
+        if self.bbc_mode() {
+            let start = match slot {
+                RomSlot::Utility => offset::BBC_BASIC_1,
+                RomSlot::Basic => offset::BBC_BASIC_2,
+                RomSlot::FloatingPoint => offset::BBC_BASIC_3,
+                RomSlot::Disk => offset::BBC_BASIC_4,
+                RomSlot::Kernel => offset::BBC_OS,
+            };
+            return Some(self.image[start + usize::from(addr) % ROM_SIZE]);
+        }
         let start = match slot {
             RomSlot::Utility => offset::UTILITY_BANKS + usize::from(self.bank) * ROM_SIZE,
             RomSlot::Basic if disk_rom => offset::BASIC_WITH_DISKROM,
@@ -283,5 +324,32 @@ mod tests {
         assert!(board.utility_block_is_ram());
         board.write_register(BANK_REGISTER, 3);
         assert!(!board.utility_block_is_ram(), "a ROM bank is selected");
+    }
+
+    #[test]
+    fn bbc_mode_puts_bbc_basic_and_the_bbc_os_in_the_sockets() {
+        let bbc = board(flag::BBCMODE);
+        assert!(bbc.bbc_mode());
+        assert_eq!(bbc.read_rom(RomSlot::Utility, 0xA000), Some(0x1A));
+        assert_eq!(bbc.read_rom(RomSlot::Basic, 0xC000), Some(0x1C));
+        assert_eq!(bbc.read_rom(RomSlot::FloatingPoint, 0xD000), Some(0x1D));
+        assert_eq!(bbc.read_rom(RomSlot::Disk, 0xE000), Some(0x1E));
+        assert_eq!(bbc.read_rom(RomSlot::Kernel, 0xF000), Some(0x1F));
+    }
+
+    #[test]
+    fn bbc_mode_has_no_ram_in_the_utility_socket_and_chooses_the_6000_rom_by_bank() {
+        let mut board = board(flag::BBCMODE);
+        board.write_register(FLAGS_REGISTER, flag::EXTRAM);
+        assert!(!board.utility_block_is_ram(), "EXTRAM is for Atom mode");
+        let (at_6000, at_7000) = board.bbc_ram_images();
+        assert_eq!((at_6000[0], at_7000[0]), (0x08, 0x19), "bank 0");
+        board.write_register(BANK_REGISTER, 3);
+        assert_eq!(board.bbc_ram_images().0[0], 0x0B, "bank 3 is the 4th block");
+        assert_eq!(
+            board.bbc_ram_images().1[0],
+            0x19,
+            "7000 does not depend on it"
+        );
     }
 }

@@ -202,6 +202,7 @@ impl Bus for AtomBus {
                 if let Some(board) = &mut self.memory.board {
                     board.write_register(addr, value);
                 }
+                self.memory.load_bbc_ram();
             }
             // Writes to ROM go nowhere, unless the RAM/ROM board has put RAM there.
             Region::Rom(slot) => self.memory.write_rom_area(slot, addr, value),
@@ -286,6 +287,54 @@ impl Atom {
         Ok(())
     }
 
+    /// Fit the RAM/ROM board with the given jumpers, which gives RAM
+    /// everywhere. The ROM image, `ramrom.rom`, must be in `rom_dir`.
+    fn install_board(&mut self, rom_dir: &Path, jumpers: u8) -> Result<(), String> {
+        let path = rom_dir.join("ramrom.rom");
+        let image = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let board =
+            RamRomBoard::new(&image, jumpers).map_err(|e| format!("{}: {e}", path.display()))?;
+        let memory = &mut self.bus.memory;
+        memory.board = Some(board);
+        memory.set_ram_preset(RamPreset::With23KExpansion);
+        Ok(())
+    }
+
+    /// Is this a BBC BASIC machine? (See [`Atom::set_bbc_basic`].)
+    pub fn bbc_basic_active(&self) -> bool {
+        self.bus
+            .memory
+            .board
+            .as_ref()
+            .is_some_and(RamRomBoard::bbc_mode)
+    }
+
+    /// Switch the Atom to BBC BASIC (or back) and restart it: the RAM/ROM
+    /// board's BBC jumper. In SD card mode the board is already there and only
+    /// the jumper changes; otherwise a board is fitted just for this (and the
+    /// floppy disk system is not available, as on the real thing). Switching
+    /// off from there goes back to the ordinary floppy-disk Atom.
+    pub fn set_bbc_basic(&mut self, on: bool, rom_dir: &Path) -> Result<(), String> {
+        let sd_card_mode = self.bus.atommc.card_folder().is_some();
+        match (&mut self.bus.memory.board, on) {
+            (Some(board), _) if sd_card_mode => {
+                board.jumpers = if on {
+                    board.jumpers | ramrom::flag::BBCMODE
+                } else {
+                    board.jumpers & !ramrom::flag::BBCMODE
+                };
+                self.reset();
+                Ok(())
+            }
+            (_, true) => {
+                self.install_board(rom_dir, ramrom::flag::BBCMODE)?;
+                self.reset();
+                Ok(())
+            }
+            (_, false) => self.use_floppy_disks(rom_dir),
+        }
+    }
+
     /// Plug in a joystick (or `None` to unplug it). It is seen through both
     /// the AtoMMC's port and the keyboard matrix. With none plugged in the
     /// AtoMMC port answers 0, which software reads as "no joystick".
@@ -303,13 +352,7 @@ impl Atom {
     /// with the AtoMMC ROM in place of Atom DOS and its matching kernel and
     /// BASIC, and the page at `0A00` is RAM. Resets the machine.
     pub fn use_sd_card(&mut self, rom_dir: &Path, card_folder: PathBuf) -> Result<(), String> {
-        let path = rom_dir.join("ramrom.rom");
-        let image = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let board = RamRomBoard::new(&image, ramrom::flag::DISKROM)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        let memory = &mut self.bus.memory;
-        memory.board = Some(board);
-        memory.set_ram_preset(RamPreset::With23KExpansion);
+        self.install_board(rom_dir, ramrom::flag::DISKROM)?;
 
         let mut atommc = AtoMmc::with_card(card_folder);
         if let Ok(eeprom) = std::fs::read(rom_dir.join("mmc_eeprom.rom")) {
@@ -336,6 +379,7 @@ impl Atom {
     /// Press the reset button: the CPU loads PC from the reset vector.
     pub fn reset(&mut self) {
         self.bus.reset_peripherals();
+        self.bus.memory.load_bbc_ram();
         self.cpu.reset(&mut self.bus);
     }
 

@@ -328,6 +328,16 @@ bare 1K Atom BASIC keeps its programs in the spare video RAM (type `PRINT TOP`:
 Many programs need the larger sizes. In SD card mode the choice is not available:
 the RAM/ROM board provides RAM everywhere.
 
+### BBC BASIC
+
+**Hardware > BBC BASIC board** restarts the Atom as a BBC BASIC machine. The
+Ramoth RAM/ROM board's BBC mode swaps in BBC BASIC 2 and a small BBC operating
+system ("ATOM MOS V3.0 HOGLET"), using the ROM images in `ramrom.rom`. The
+screen is a graphics screen the BBC OS writes its own text into. It works in
+either machine mode (in SD card mode only the board's jumper changes). As on the
+real board, the floppy disk system is not available in BBC mode. Untick the same
+item to go back. Quick check: `PRINT PI` gives 3.14159265.
+
 ### Tape
 
 The Atom works like the real machine: `*SAVE "NAME" 2900 2A00` (start and end

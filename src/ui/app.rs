@@ -898,6 +898,15 @@ impl AtomApp {
             ui.menu_button("Hardware", |ui| {
                 ui.checkbox(&mut self.colour_board, "Colour board");
                 self.atom.bus.framebuffer.monochrome = !self.colour_board;
+                let mut bbc = self.atom.bbc_basic_active();
+                if ui
+                    .checkbox(&mut bbc, "BBC BASIC board")
+                    .on_hover_text("Restarts the Atom as a BBC BASIC machine")
+                    .clicked()
+                {
+                    self.notice = self.atom.set_bbc_basic(bbc, &self.rom_dir).err();
+                    ui.close();
+                }
                 ui.menu_button("Video RAM", |ui| {
                     let current = self.atom.bus.memory.video_ram_kb();
                     for kb in 1..=MAX_VIDEO_RAM_KB {

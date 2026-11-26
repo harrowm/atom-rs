@@ -269,6 +269,19 @@ impl Memory {
         }
     }
 
+    /// In BBC mode the board copies two ROMs into RAM at `6000` and `7000`.
+    /// Call whenever the board's registers (or jumpers) may have changed, and
+    /// on a reset.
+    pub fn load_bbc_ram(&mut self) {
+        if let Some(board) = &self.board
+            && board.bbc_mode()
+        {
+            let (at_6000, at_7000) = board.bbc_ram_images();
+            self.ram[0x6000..0x7000].copy_from_slice(at_6000);
+            self.ram[0x7000..0x8000].copy_from_slice(at_7000);
+        }
+    }
+
     fn board_selects_floppy_controller(&self) -> bool {
         self.disk_interface_fitted
             && self
