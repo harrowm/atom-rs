@@ -118,6 +118,25 @@ impl Default for Framebuffer {
 }
 
 /// Text mode: 32 characters of 8 x 12 pixels per row, 16 rows.
+/// The RAM address the 6847 reads for fetch `slot` (0-31, left to right) of
+/// picture line `line` in `mode`. A graphics mode that needs only 16 bytes a
+/// line reads each byte twice over the 32 fetches.
+pub fn fetch_address(mode: VideoMode, line: usize, slot: usize) -> usize {
+    match mode {
+        VideoMode::Text => VIDEO_RAM_START + (line / GLYPH_HEIGHT) * 32 + slot,
+        VideoMode::Graphics {
+            width,
+            height,
+            colours,
+        } => {
+            let pixels_per_byte = if colours == 2 { 8 } else { 4 };
+            let bytes_per_row = width as usize / pixels_per_byte;
+            let lines_per_row = HEIGHT / height as usize;
+            VIDEO_RAM_START + (line / lines_per_row) * bytes_per_row + slot * bytes_per_row / 32
+        }
+    }
+}
+
 fn render_text_line(row: &mut [u8], line: usize, ram: &[u8], set: usize) {
     const COLUMNS: usize = 32;
     let char_row = line / GLYPH_HEIGHT;

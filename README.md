@@ -393,6 +393,13 @@ whether all its blocks are there), as in the Atom tape format
 writes. CSW version 1 and 2 (including zlib-compressed) are read; only UEF
 can be saved.
 
+### Video snow
+
+Real Atoms flicker a little when the CPU uses video RAM while the 6847 is
+reading it. *Hardware > Video snow (experimental)* models this: if the CPU
+reads or writes video RAM at the moment the 6847 is fetching a byte, the
+picture shows the CPU's byte there. It is an approximation, off by default.
+
 ### Disk write protection
 
 Each drive's menu (**Disk > Drive 0**) has a **Write protected** tick, like the

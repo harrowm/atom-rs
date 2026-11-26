@@ -19,9 +19,9 @@ use super::ramrom::{self, RamRomBoard};
 use super::sid::SidCard;
 use super::sound::Sampler;
 use super::tape::Tape;
-use super::vdg6847::{Standard, VISIBLE_LINES, Vdg, VideoMode};
+use super::vdg6847::{FETCH_SLOTS, Standard, VISIBLE_LINES, Vdg, VideoMode, fetch_slot};
 use super::via6522::Via;
-use super::video::Framebuffer;
+use super::video::{Framebuffer, fetch_address};
 use crate::cpu::{Bus, Cpu};
 
 /// The Atom's CPU clock.
@@ -114,6 +114,13 @@ pub struct AtomBus {
     pub external_irq: bool,
     /// A falling edge on NMI is waiting to be seen by the CPU.
     pub nmi_edge: bool,
+    /// Model the picture "snow" from the CPU and the 6847 sharing video RAM
+    /// (off by default; see [`AtomBus::note_snow`]).
+    pub snow: bool,
+    /// With snow on: the line waiting to be drawn, with the video mode it
+    /// started in, and what the CPU put on the bus during each of its fetches.
+    snow_line: Option<(usize, VideoMode)>,
+    snow_bytes: [Option<u8>; FETCH_SLOTS as usize],
 }
 
 impl AtomBus {
@@ -135,6 +142,9 @@ impl AtomBus {
             debug: Debugger::default(),
             external_irq: false,
             nmi_edge: false,
+            snow: false,
+            snow_line: None,
+            snow_bytes: [None; FETCH_SLOTS as usize],
         }
     }
 
@@ -162,8 +172,57 @@ impl AtomBus {
         self.fdc_nmi_was_asserted = fdc_nmi;
         self.vdg.tick();
         self.ppi.field_sync_low = self.vdg.field_sync_low();
-        if self.vdg.at_line_start() && self.vdg.line() < VISIBLE_LINES {
-            self.draw_scanline();
+        if self.vdg.at_line_start() {
+            if self.snow {
+                self.draw_scanline_with_snow();
+            } else if self.vdg.line() < VISIBLE_LINES {
+                self.draw_scanline();
+            }
+        }
+    }
+
+    /// With snow on, a line cannot be drawn until it has finished, because
+    /// the CPU may still disturb it. So at the start of each line, draw the
+    /// one before it, then start collecting for this one.
+    fn draw_scanline_with_snow(&mut self) {
+        if let Some((line, mode)) = self.snow_line.take() {
+            // Put the bytes the CPU put on the bus where the 6847 read them,
+            // draw, and put the real bytes back.
+            let mut saved = Vec::new();
+            for (slot, byte) in self.snow_bytes.iter().enumerate() {
+                if let Some(byte) = *byte {
+                    let at = fetch_address(mode, line, slot);
+                    saved.push((at, self.memory.ram[at]));
+                    self.memory.ram[at] = byte;
+                }
+            }
+            self.framebuffer
+                .render_line(line, &self.memory.ram[..], mode, self.ppi.colour_set());
+            for (at, byte) in saved.into_iter().rev() {
+                self.memory.ram[at] = byte;
+            }
+        }
+        self.snow_bytes = [None; FETCH_SLOTS as usize];
+        if self.vdg.line() < VISIBLE_LINES {
+            let mode = VideoMode::from_port_a_high_nibble(self.ppi.video_mode_bits());
+            self.snow_line = Some((self.vdg.line() as usize, mode));
+        }
+    }
+
+    /// The CPU has just used video RAM. The 6847 reads the same RAM to draw
+    /// the picture, and on the Atom they take turns on the one set of address
+    /// and data lines, so if the CPU gets in while the 6847 is fetching, the
+    /// 6847 can see the CPU's byte instead of its own: a flicker of wrong
+    /// characters ("snow"). This is an approximation (the real timing of the
+    /// hand-over is not documented well enough to be exact), so it is off by
+    /// default: when a fetch and an access coincide, the fetch gets the byte
+    /// that was transferred.
+    fn note_snow(&mut self, byte: u8) {
+        if !self.snow || self.snow_line.is_none() {
+            return;
+        }
+        if let Some(slot) = fetch_slot(self.vdg.cycle_in_line()) {
+            self.snow_bytes[slot] = Some(byte);
         }
     }
 
@@ -260,7 +319,11 @@ impl Bus for AtomBus {
             self.debug.note_access(addr, true);
         }
         match self.memory.region(addr) {
-            Region::Ram | Region::VideoRam => self.memory.ram[addr as usize] = value,
+            Region::Ram => self.memory.ram[addr as usize] = value,
+            Region::VideoRam => {
+                self.memory.ram[addr as usize] = value;
+                self.note_snow(value);
+            }
             Region::Ppi => self.ppi.write(addr, value),
             Region::Via => self.via.write(addr, value),
             Region::Fdc => self.fdc.write(addr, value),

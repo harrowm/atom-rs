@@ -13,6 +13,21 @@ use serde::{Deserialize, Serialize};
 
 pub const CYCLES_PER_LINE: u32 = 64;
 pub const VISIBLE_LINES: u32 = 192;
+
+/// The 6847 fetches the 32 bytes of a picture line during the display
+/// window, which the datasheet puts at 128 of the 227.5 colour-clock periods
+/// of a line (about 36 of the Atom's 64 CPU cycles), starting about 70
+/// periods in (about cycle 20).
+pub const FETCH_START_CYCLE: u32 = 20;
+pub const FETCH_CYCLES: u32 = 36;
+pub const FETCH_SLOTS: u32 = 32;
+
+/// Which of the line's 32 fetches (counting from the left) is happening at
+/// this cycle of the line, if the 6847 is fetching at all.
+pub fn fetch_slot(cycle_in_line: u32) -> Option<usize> {
+    let into_window = cycle_in_line.checked_sub(FETCH_START_CYCLE)?;
+    (into_window < FETCH_CYCLES).then(|| (into_window * FETCH_SLOTS / FETCH_CYCLES) as usize)
+}
 const FS_LOW_RANGE: std::ops::Range<u32> = 192..224;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +79,11 @@ impl Vdg {
     /// True on the first cycle of a scanline, when the picture line can be drawn.
     pub fn at_line_start(&self) -> bool {
         self.cycle_in_line == 0
+    }
+
+    /// How far through the current scanline we are, in CPU cycles.
+    pub fn cycle_in_line(&self) -> u32 {
+        self.cycle_in_line
     }
 
     /// The scanline currently being drawn (0 is the top of the picture).
@@ -162,5 +182,27 @@ mod tests {
                 colours: 4
             }
         );
+    }
+
+    #[test]
+    fn the_fetches_happen_in_the_display_window_left_to_right() {
+        assert_eq!(fetch_slot(0), None, "before the window");
+        assert_eq!(fetch_slot(FETCH_START_CYCLE - 1), None);
+        assert_eq!(fetch_slot(FETCH_START_CYCLE), Some(0), "the first byte");
+        assert_eq!(
+            fetch_slot(FETCH_START_CYCLE + FETCH_CYCLES - 1),
+            Some(31),
+            "the last"
+        );
+        assert_eq!(
+            fetch_slot(FETCH_START_CYCLE + FETCH_CYCLES),
+            None,
+            "after the window"
+        );
+        assert_eq!(fetch_slot(CYCLES_PER_LINE - 1), None);
+        // Left to right: the slot never goes backwards.
+        let slots: Vec<usize> = (0..CYCLES_PER_LINE).filter_map(fetch_slot).collect();
+        assert!(slots.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert_eq!(slots.len() as u32, FETCH_CYCLES);
     }
 }

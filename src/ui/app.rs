@@ -1112,6 +1112,10 @@ impl AtomApp {
                 });
                 ui.checkbox(&mut self.colour_board, "Colour board");
                 self.atom.bus.framebuffer.monochrome = !self.colour_board;
+                ui.checkbox(&mut self.atom.bus.snow, "Video snow (experimental)")
+                    .on_hover_text(
+                        "Flicker from the CPU and the 6847 sharing video RAM. An approximation.",
+                    );
                 ui.checkbox(
                     &mut self.atom.bus.memory.sid_fitted,
                     "SID sound card (at BDC0)",
