@@ -297,6 +297,16 @@ SHIFT, CTRL and REPT, and F6, F7 and F12 belong to the emulator.
 Changes are saved to `~/.config/atom-rs/keymap.json`, which you can also edit
 or delete by hand.
 
+### Remembered settings
+
+The machine you chose (and the SD card folder), RAM and video RAM, the colour
+board, snow, the SID card and model, volume and mute, scaling, fast tape and
+the keyboard joystick are remembered between runs in
+`~/.config/atom-rs/settings.json` (plain JSON; delete it to go back to the
+defaults). Options on the command line win: `--sdcard` or `--state` decide the
+machine, and `--joystick` and `--fast-tape` only switch things on. Loaded
+disks and tapes are not remembered.
+
 Menus: **File** loads a ROM into a socket, chooses a ROM folder, or loads an
 `.atm` program into memory. **Tape** inserts, plays, rewinds, records and saves
 tapes. **Sound** has mute and volume. **Machine**

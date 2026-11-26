@@ -11,6 +11,7 @@ use super::help_window::HelpWindows;
 use super::keyboard_window::KeyboardWindow;
 use super::keymap::{KeyMap, Target};
 use super::screenshot;
+use super::settings::Settings;
 use super::tape_window::TapeCatalogueWindow;
 use crate::cli::Options;
 use atom_rs::machine::Atom;
@@ -113,6 +114,8 @@ pub struct AtomApp {
     speed_sample_cycles: u64,
 
     texture: Option<TextureHandle>,
+    /// The settings as last written to disk (see [`AtomApp::save_settings_if_changed`]).
+    saved_settings: Settings,
 }
 
 impl AtomApp {
@@ -152,6 +155,7 @@ impl AtomApp {
             speed_sample_start: Instant::now(),
             speed_sample_cycles: 0,
             texture: None,
+            saved_settings: Settings::default(),
         };
         app.load_roms();
         app.start_audio();
@@ -166,8 +170,91 @@ impl AtomApp {
         if let Some(message) = problem {
             app.notice = Some(message);
         }
+        let (settings, problem) = Settings::load();
+        if let Some(message) = problem {
+            app.notice = Some(message);
+        }
+        // What the command line asks for (a card folder, a saved state) decides
+        // the machine, so only restore the saved one when it asks for nothing.
+        let restore_machine = options.sdcard.is_none() && options.state.is_none();
+        app.apply_settings(&settings, restore_machine);
+        app.saved_settings = app.settings();
         app.apply_start_options(&options);
         app
+    }
+
+    // ---- Remembered settings ------------------------------------------------------
+
+    /// The settings as they are now.
+    fn settings(&self) -> Settings {
+        let bus = &self.atom.bus;
+        Settings {
+            machine: self.atom.machine(),
+            card_folder: bus
+                .atommc
+                .card_folder()
+                .map(Path::to_path_buf)
+                .or_else(|| self.card_folder.clone()),
+            ram_preset: bus.memory.ram_preset(),
+            video_ram_kb: bus.memory.video_ram_kb(),
+            colour_board: self.colour_board,
+            snow: bus.snow,
+            sid_fitted: bus.memory.sid_fitted,
+            sid_model: bus.sid.model(),
+            volume: self.volume,
+            muted: self.muted,
+            integer_scaling: self.integer_scaling,
+            fast_tape: self.fast_tape,
+            joystick_keys: self.joystick_keys,
+        }
+    }
+
+    /// Put the saved settings into effect. The machine goes first, because
+    /// choosing one restarts the Atom and sets up its own hardware.
+    fn apply_settings(&mut self, settings: &Settings, restore_machine: bool) {
+        self.card_folder = settings.card_folder.clone();
+        if restore_machine && settings.machine != Machine::FloppyAtom {
+            let result = self.atom.set_machine(
+                settings.machine,
+                &self.rom_dir,
+                settings.card_folder.as_deref(),
+            );
+            if let Err(message) = result {
+                self.notice = Some(format!("Could not restore the saved machine: {message}"));
+            }
+        }
+        // RAM size is the one setting the RAM/ROM board makes meaningless.
+        if self.atom.machine() != Machine::SdCard && self.atom.machine() != Machine::BbcBasic {
+            let _ = self.atom.set_ram_preset(settings.ram_preset);
+        }
+        let bus = &mut self.atom.bus;
+        bus.memory.set_video_ram_kb(settings.video_ram_kb);
+        bus.snow = settings.snow;
+        bus.memory.sid_fitted = settings.sid_fitted;
+        bus.sid.set_model(settings.sid_model);
+        self.colour_board = settings.colour_board;
+        bus.framebuffer.monochrome = !settings.colour_board;
+        self.volume = settings.volume;
+        self.muted = settings.muted;
+        self.integer_scaling = settings.integer_scaling;
+        self.fast_tape = settings.fast_tape;
+        self.joystick_keys = settings.joystick_keys;
+    }
+
+    /// Write the settings out when they have changed. Not while a mouse
+    /// button is down, so dragging the volume slider does not write a file on
+    /// every frame; it is saved when the button is let go.
+    fn save_settings_if_changed(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.pointer.any_down()) {
+            return;
+        }
+        let now = self.settings();
+        if now != self.saved_settings {
+            if let Err(message) = now.save() {
+                self.notice = Some(format!("Cannot save the settings: {message}"));
+            }
+            self.saved_settings = now; // even on failure, so it does not retry every frame
+        }
     }
 
     /// Insert the disks and tape, restore the state and queue the commands
@@ -176,7 +263,8 @@ impl AtomApp {
         if self.rom_error.is_some() {
             return;
         }
-        self.joystick_keys = options.joystick;
+        // A flag can only switch these on; otherwise the saved setting stands.
+        self.joystick_keys |= options.joystick;
         if let Some(folder) = &options.sdcard {
             self.use_sd_card(folder.clone());
         }
@@ -189,7 +277,7 @@ impl AtomApp {
             self.insert_tape_file(path);
             self.autoplay_tape = true;
         }
-        self.fast_tape = options.fast_tape;
+        self.fast_tape |= options.fast_tape;
         let mut start_delay = BOOT_FRAMES;
         if let Some(path) = &options.state {
             self.load_state_path(path);
@@ -1316,6 +1404,8 @@ impl eframe::App for AtomApp {
             self.notice = Some(format!("Cannot save the key map: {message}"));
         }
 
+        self.save_settings_if_changed(ui.ctx());
+
         // Debugger windows are separate OS windows; they hand back commands.
         let state = AppState {
             running: self.running,
@@ -1372,5 +1462,69 @@ mod joystick_key_tests {
         let mut stick = Joystick::default();
         assert!(!press_joystick_key(&mut stick, Key::A));
         assert_eq!(stick, Joystick::default());
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use crate::cli::Options;
+    use atom_rs::machine::memory::RamPreset;
+    use atom_rs::machine::sid::SidModel;
+
+    fn app() -> Option<AtomApp> {
+        let app = AtomApp::new(PathBuf::from("roms"), Options::default());
+        app.rom_error.is_none().then_some(app)
+    }
+
+    /// Saved settings really reach the machine, and reading them back gives
+    /// the same settings (so nothing is lost or changed on the way).
+    #[test]
+    fn applying_settings_puts_them_into_effect() {
+        let Some(mut app) = app() else { return };
+        let wanted = Settings {
+            machine: Machine::GdosAtom,
+            ram_preset: RamPreset::With16KExpansion,
+            video_ram_kb: 3,
+            colour_board: false,
+            snow: true,
+            sid_fitted: false,
+            sid_model: SidModel::Mos8580,
+            volume: 0.7,
+            muted: true,
+            integer_scaling: false,
+            fast_tape: true,
+            joystick_keys: true,
+            ..Settings::default()
+        };
+        app.apply_settings(&wanted, true);
+        assert_eq!(app.atom.machine(), Machine::GdosAtom);
+        assert!(app.atom.bus.snow && app.atom.bus.framebuffer.monochrome);
+        assert_eq!(app.settings(), wanted);
+    }
+
+    #[test]
+    fn the_sd_card_machine_without_its_folder_falls_back_with_a_message() {
+        let Some(mut app) = app() else { return };
+        let wanted = Settings {
+            machine: Machine::SdCard,
+            card_folder: None,
+            ..Settings::default()
+        };
+        app.apply_settings(&wanted, true);
+        assert_eq!(app.atom.machine(), Machine::FloppyAtom);
+        assert!(app.notice.is_some_and(|n| n.contains("saved machine")));
+    }
+
+    /// A command line that names the machine (here: a state file) wins.
+    #[test]
+    fn the_saved_machine_is_not_restored_when_told_not_to() {
+        let Some(mut app) = app() else { return };
+        let saved = Settings {
+            machine: Machine::BbcBasic,
+            ..Settings::default()
+        };
+        app.apply_settings(&saved, false);
+        assert_eq!(app.atom.machine(), Machine::FloppyAtom);
     }
 }

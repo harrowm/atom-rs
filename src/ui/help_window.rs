@@ -146,6 +146,7 @@ fn help_sections() -> &'static [Section] {
                 "Tape and Disk: tapes and floppy disk images. Disk is greyed out on machines with no floppy drives.",
                 "Sound: mute and volume. Sound plays at normal speed or slower.",
                 "Hardware: the kind of machine, its RAM, the video RAM, the colour board, video snow, the SID sound card and its model, and the ROMs.",
+                "Your choices (machine, RAM, sound, display and so on) are remembered next time. They are kept in ~/.config/atom-rs/settings.json; delete that file to start afresh.",
                 "Input: the joystick on the keyboard (arrow keys and Space), and the keyboard mapping window.",
                 "View: how the picture is scaled, and full screen. Debug: windows for the CPU, a disassembler, memory, breakpoints and the chips.",
             ],

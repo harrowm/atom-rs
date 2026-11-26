@@ -7,6 +7,8 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use super::atm::AtmFile;
 use super::atommc::AtoMmc;
 use super::debug::{Debugger, StopReason};
@@ -30,7 +32,7 @@ pub const CLOCK_HZ: f64 = 1_000_000.0;
 /// What kind of Atom this is: the four ways the emulator can be set up. The
 /// Hardware menu chooses between them, and the settings that apply (RAM size,
 /// the card folder, the GDOS ROM bank) depend on which.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Machine {
     /// The standard disk Atom: an 8271 floppy controller and Atom DOS.
     FloppyAtom,

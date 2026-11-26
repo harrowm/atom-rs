@@ -239,13 +239,7 @@ impl KeyMap {
 
     /// `~/.config/atom-rs/keymap.json`
     pub fn path() -> Option<PathBuf> {
-        let home = std::env::var_os("HOME")?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("atom-rs")
-                .join("keymap.json"),
-        )
+        Some(super::settings::config_folder()?.join("keymap.json"))
     }
 
     /// Load the saved map, or the defaults if there is none. The error

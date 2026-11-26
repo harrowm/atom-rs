@@ -18,12 +18,13 @@
 //! times a second, cannot tell; sample playback through the volume register
 //! would lose a little detail.
 
+use serde::{Deserialize, Serialize};
 use sidera::{ChipModel, Sid as Chip};
 
 /// Which SID chip is fitted. The two sound different: the 8580 is the later,
 /// cleaner chip, with a smoother filter, and tunes can sound quite different
 /// on each. (Atomulator offers many models; sidera has these two.)
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SidModel {
     #[default]
     Mos6581,
