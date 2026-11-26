@@ -81,6 +81,11 @@ impl Vdg {
         self.cycle_in_line == 0
     }
 
+    /// How many scanlines make up a frame (262 for NTSC, 312 for PAL).
+    pub fn lines_per_frame(&self) -> u32 {
+        self.standard.lines_per_frame()
+    }
+
     /// How far through the current scanline we are, in CPU cycles.
     pub fn cycle_in_line(&self) -> u32 {
         self.cycle_in_line

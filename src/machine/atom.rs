@@ -181,6 +181,13 @@ impl AtomBus {
         self.vdg.tick();
         self.ppi.field_sync_low = self.vdg.field_sync_low();
         if self.vdg.at_line_start() {
+            let mode = VideoMode::from_port_a_high_nibble(self.ppi.video_mode_bits());
+            self.framebuffer.note_border(
+                self.vdg.line(),
+                self.vdg.lines_per_frame(),
+                mode,
+                self.ppi.colour_set(),
+            );
             if self.snow {
                 self.draw_scanline_with_snow();
             } else if self.vdg.line() < VISIBLE_LINES {

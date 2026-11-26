@@ -28,6 +28,7 @@ pub struct Settings {
     pub ram_preset: RamPreset,
     pub video_ram_kb: u8,
     pub colour_board: bool,
+    pub show_border: bool,
     pub snow: bool,
     pub sid_fitted: bool,
     pub sid_model: SidModel,
@@ -46,6 +47,7 @@ impl Default for Settings {
             ram_preset: RamPreset::With22KExpansion,
             video_ram_kb: MAX_VIDEO_RAM_KB,
             colour_board: true,
+            show_border: true,
             snow: false,
             sid_fitted: true,
             sid_model: SidModel::default(),
@@ -110,6 +112,7 @@ mod tests {
             ram_preset: RamPreset::Minimal,
             video_ram_kb: 3,
             colour_board: false,
+            show_border: false,
             snow: true,
             sid_fitted: true,
             sid_model: SidModel::Mos8580,
@@ -152,5 +155,6 @@ mod tests {
         assert_eq!(atom.bus.memory.sid_fitted, defaults.sid_fitted);
         assert_eq!(atom.bus.sid.model(), defaults.sid_model);
         assert_eq!(atom.bus.snow, defaults.snow);
+        assert_eq!(atom.bus.framebuffer.show_border, defaults.show_border);
     }
 }

@@ -403,6 +403,15 @@ whether all its blocks are there), as in the Atom tape format
 writes. CSW version 1 and 2 (including zlib-compressed) are read; only UEF
 can be saved.
 
+### Screen border
+
+The 6847 draws a border round the picture (25 lines above, 26 below, and about
+65 pixels at each side, as in its datasheet): black with text, and green or
+buff (off-white) with graphics, following the colour-set bit. It changes at
+the scanline where a program changes mode. *Hardware > Screen border* turns it
+off, which gives the plain 256 x 192 picture; screenshots show what the window
+shows.
+
 ### Video snow
 
 Real Atoms flicker a little when the CPU uses video RAM while the 6847 is

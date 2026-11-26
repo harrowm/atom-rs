@@ -13,6 +13,46 @@ use super::vdg6847::{VISIBLE_LINES, VideoMode};
 pub const WIDTH: usize = 256;
 pub const HEIGHT: usize = VISIBLE_LINES as usize;
 
+// The border, from the MC6847 datasheet (Figure 13, and the text on page 14).
+// Above the 192 picture lines there are 25 border lines and below it 26. The
+// width from blanking to blanking is 193.1 colour clocks, of which the picture
+// takes 128; the 65.1 left over is 65 pixels (a colour clock is 2 pixels),
+// shared equally between left and right so the picture stays centred. (The
+// datasheet's own figure for the left offset, "283 periods", is a misprint:
+// it is longer than the whole line.)
+pub const BORDER_TOP: usize = 25;
+pub const BORDER_BOTTOM: usize = 26;
+pub const BORDER_SIDE: usize = 65;
+/// The picture plus its border.
+pub const FULL_WIDTH: usize = WIDTH + 2 * BORDER_SIDE;
+pub const FULL_HEIGHT: usize = BORDER_TOP + HEIGHT + BORDER_BOTTOM;
+
+/// Which row of the picture-with-border a scanline of the frame is, if it is
+/// shown. Scanlines count from the top of the picture: 0-191 are the picture,
+/// the 26 after it are the bottom border, then come the vertical retrace and
+/// blanking (not shown), and the last 25 lines of the frame are the top
+/// border, just before the picture starts again.
+pub fn border_row(line: u32, lines_per_frame: u32) -> Option<usize> {
+    let (line, lines_per_frame) = (line as usize, lines_per_frame as usize);
+    if line < HEIGHT + BORDER_BOTTOM {
+        Some(BORDER_TOP + line)
+    } else if line >= lines_per_frame - BORDER_TOP {
+        Some(line - (lines_per_frame - BORDER_TOP))
+    } else {
+        None
+    }
+}
+
+/// The colour of the border for a video mode: black with text and
+/// semigraphics, and in the graphics modes green, or buff (off-white) when the
+/// colour set pin selects the second set.
+pub fn border_colour(mode: VideoMode, colour_set: bool) -> u8 {
+    match mode {
+        VideoMode::Text => BLACK,
+        VideoMode::Graphics { .. } => COLOURS_BY_SET[colour_set as usize][0],
+    }
+}
+
 /// Start of video RAM; the display always begins here.
 const VIDEO_RAM_START: usize = 0x8000;
 
@@ -67,6 +107,11 @@ pub struct Framebuffer {
     pub pixels: Vec<u8>,
     /// Show shades of grey: an Atom without the colour board.
     pub monochrome: bool,
+    /// Show the border around the picture (Hardware menu).
+    pub show_border: bool,
+    /// The border colour of each row of the picture-with-border, as it was
+    /// when the beam drew that row.
+    border: [u8; FULL_HEIGHT],
 }
 
 impl Framebuffer {
@@ -74,16 +119,69 @@ impl Framebuffer {
         Framebuffer {
             pixels: vec![BLACK; WIDTH * HEIGHT],
             monochrome: false,
+            show_border: true,
+            border: [BLACK; FULL_HEIGHT],
+        }
+    }
+
+    /// The beam is at the start of scanline `line` (of `lines_per_frame`) in
+    /// this mode: remember the border colour for that row.
+    pub fn note_border(
+        &mut self,
+        line: u32,
+        lines_per_frame: u32,
+        mode: VideoMode,
+        colour_set: bool,
+    ) {
+        if let Some(row) = border_row(line, lines_per_frame) {
+            self.border[row] = border_colour(mode, colour_set);
+        }
+    }
+
+    /// The size of the picture as shown: with the border if it is on.
+    pub fn shown_size(&self) -> (usize, usize) {
+        if self.show_border {
+            (FULL_WIDTH, FULL_HEIGHT)
+        } else {
+            (WIDTH, HEIGHT)
+        }
+    }
+
+    /// The picture as shown (see [`Framebuffer::shown_size`]), as RGBA bytes.
+    pub fn to_rgba_shown(&self) -> Vec<u8> {
+        if !self.show_border {
+            return self.to_rgba();
+        }
+        let palette = self.palette();
+        let mut rgba = Vec::with_capacity(FULL_WIDTH * FULL_HEIGHT * 4);
+        let mut push = |index: u8| {
+            let [r, g, b] = palette[index as usize];
+            rgba.extend([r, g, b, 255]);
+        };
+        for (row, &border) in self.border.iter().enumerate() {
+            let picture_row = row.checked_sub(BORDER_TOP).filter(|&r| r < HEIGHT);
+            for x in 0..FULL_WIDTH {
+                let picture_x = x.checked_sub(BORDER_SIDE).filter(|&c| c < WIDTH);
+                match (picture_row, picture_x) {
+                    (Some(r), Some(c)) => push(self.pixels[r * WIDTH + c]),
+                    _ => push(border),
+                }
+            }
+        }
+        rgba
+    }
+
+    fn palette(&self) -> &'static [[u8; 3]; 9] {
+        if self.monochrome {
+            &MONOCHROME_PALETTE
+        } else {
+            &PALETTE
         }
     }
 
     /// Convert to RGBA bytes (4 per pixel), ready to upload as a texture.
     pub fn to_rgba(&self) -> Vec<u8> {
-        let palette = if self.monochrome {
-            &MONOCHROME_PALETTE
-        } else {
-            &PALETTE
-        };
+        let palette = self.palette();
         self.pixels
             .iter()
             .flat_map(|&index| {
@@ -327,5 +425,100 @@ mod tests {
         frame.pixels[1] = GREEN;
         let rgba = frame.to_rgba();
         assert!(rgba[4] > rgba[0] + 100, "green is much brighter than black");
+    }
+
+    // ---- The border -----------------------------------------------------------------
+
+    #[test]
+    fn the_datasheet_sizes_add_up() {
+        assert_eq!((FULL_WIDTH, FULL_HEIGHT), (386, 243));
+        // 193.1 colour clocks across, 2 pixels each: about 386.
+        assert!((FULL_WIDTH as f64 - 193.1 * 2.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn scanlines_map_to_border_rows() {
+        // NTSC, 262 lines: picture, 26 bottom border, 6 + 13 not shown, 25 top.
+        let ntsc = |line| border_row(line, 262);
+        assert_eq!(ntsc(0), Some(25), "first picture line");
+        assert_eq!(ntsc(191), Some(216), "last picture line");
+        assert_eq!(ntsc(192), Some(217), "first bottom border line");
+        assert_eq!(ntsc(217), Some(242), "last bottom border line");
+        assert_eq!(ntsc(218), None, "vertical retrace");
+        assert_eq!(ntsc(236), None, "vertical blanking");
+        assert_eq!(ntsc(237), Some(0), "first top border line");
+        assert_eq!(ntsc(261), Some(24), "last top border line");
+        // PAL has more lines, all of them blank, but the border is the same.
+        let pal = |line| border_row(line, 312);
+        assert_eq!(pal(217), Some(242));
+        assert_eq!(pal(218), None);
+        assert_eq!(pal(286), None);
+        assert_eq!(pal(287), Some(0));
+        assert_eq!(pal(311), Some(24));
+        // Every shown row is reached exactly once.
+        let mut seen = [0; FULL_HEIGHT];
+        for line in 0..262 {
+            if let Some(row) = ntsc(line) {
+                seen[row] += 1;
+            }
+        }
+        assert!(seen.iter().all(|&n| n == 1));
+    }
+
+    #[test]
+    fn the_border_is_black_with_text_and_lit_with_graphics() {
+        let graphics = VideoMode::Graphics {
+            width: 256,
+            height: 192,
+            colours: 2,
+        };
+        assert_eq!(border_colour(VideoMode::Text, false), BLACK);
+        assert_eq!(border_colour(VideoMode::Text, true), BLACK);
+        assert_eq!(border_colour(graphics, false), GREEN);
+        assert_eq!(border_colour(graphics, true), BUFF);
+    }
+
+    #[test]
+    fn the_picture_sits_in_the_middle_of_its_border() {
+        let mut fb = Framebuffer::new();
+        fb.pixels.fill(RED);
+        for line in 0..262 {
+            fb.note_border(line, 262, VideoMode::Text, false);
+        }
+        fb.border[0] = GREEN; // the top row
+        let rgba = fb.to_rgba_shown();
+        assert_eq!(rgba.len(), FULL_WIDTH * FULL_HEIGHT * 4);
+        let at = |x: usize, y: usize| {
+            let i = (y * FULL_WIDTH + x) * 4;
+            [rgba[i], rgba[i + 1], rgba[i + 2]]
+        };
+        assert_eq!(at(10, 0), PALETTE[GREEN as usize], "the top border row");
+        assert_eq!(at(10, 100), PALETTE[BLACK as usize], "left border");
+        assert_eq!(at(BORDER_SIDE - 1, 100), PALETTE[BLACK as usize]);
+        assert_eq!(
+            at(BORDER_SIDE, BORDER_TOP),
+            PALETTE[RED as usize],
+            "picture corner"
+        );
+        assert_eq!(
+            at(BORDER_SIDE + WIDTH - 1, BORDER_TOP + HEIGHT - 1),
+            PALETTE[RED as usize]
+        );
+        assert_eq!(
+            at(BORDER_SIDE + WIDTH, 100),
+            PALETTE[BLACK as usize],
+            "right border"
+        );
+        assert_eq!(at(10, FULL_HEIGHT - 1), PALETTE[BLACK as usize], "bottom");
+    }
+
+    #[test]
+    fn with_the_border_off_only_the_picture_is_shown() {
+        let mut fb = Framebuffer::new();
+        fb.show_border = false;
+        assert_eq!(fb.shown_size(), (WIDTH, HEIGHT));
+        assert_eq!(fb.to_rgba_shown(), fb.to_rgba());
+        fb.show_border = true;
+        assert_eq!(fb.shown_size(), (FULL_WIDTH, FULL_HEIGHT));
     }
 }

@@ -27,7 +27,6 @@ use atom_rs::machine::sid::SidModel;
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
 use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
-use atom_rs::machine::video::{HEIGHT, WIDTH};
 
 /// The Atom's CPU clock.
 const CLOCK_HZ: f64 = 1_000_000.0;
@@ -198,6 +197,7 @@ impl AtomApp {
             ram_preset: bus.memory.ram_preset(),
             video_ram_kb: bus.memory.video_ram_kb(),
             colour_board: self.colour_board,
+            show_border: bus.framebuffer.show_border,
             snow: bus.snow,
             sid_fitted: bus.memory.sid_fitted,
             sid_model: bus.sid.model(),
@@ -230,6 +230,7 @@ impl AtomApp {
         let bus = &mut self.atom.bus;
         bus.memory.set_video_ram_kb(settings.video_ram_kb);
         bus.snow = settings.snow;
+        bus.framebuffer.show_border = settings.show_border;
         bus.memory.sid_fitted = settings.sid_fitted;
         bus.sid.set_model(settings.sid_model);
         self.colour_board = settings.colour_board;
@@ -336,9 +337,10 @@ impl AtomApp {
         } else {
             PathBuf::from(&name)
         };
-        let rgba = self.atom.bus.framebuffer.to_rgba();
+        let (width, height) = self.atom.bus.framebuffer.shown_size();
+        let rgba = self.atom.bus.framebuffer.to_rgba_shown();
         self.notice = Some(
-            match screenshot::encode_png(WIDTH as u32, HEIGHT as u32, &rgba)
+            match screenshot::encode_png(width as u32, height as u32, &rgba)
                 .and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()))
             {
                 Ok(()) => format!("Screenshot saved: {}", path.display()),
@@ -897,8 +899,9 @@ impl AtomApp {
     }
 
     fn upload_screen(&mut self, ctx: &egui::Context) -> egui::TextureId {
-        let rgba = self.atom.bus.framebuffer.to_rgba();
-        let image = egui::ColorImage::from_rgba_unmultiplied([WIDTH, HEIGHT], &rgba);
+        let (width, height) = self.atom.bus.framebuffer.shown_size();
+        let rgba = self.atom.bus.framebuffer.to_rgba_shown();
+        let image = egui::ColorImage::from_rgba_unmultiplied([width, height], &rgba);
         match &mut self.texture {
             Some(texture) => texture.set(image, TextureOptions::NEAREST),
             None => {
@@ -1200,6 +1203,10 @@ impl AtomApp {
                 });
                 ui.checkbox(&mut self.colour_board, "Colour board");
                 self.atom.bus.framebuffer.monochrome = !self.colour_board;
+                ui.checkbox(&mut self.atom.bus.framebuffer.show_border, "Screen border")
+                    .on_hover_text(
+                        "The border the 6847 draws round the picture: black with text, green or buff with graphics.",
+                    );
                 ui.checkbox(&mut self.atom.bus.snow, "Video snow (experimental)")
                     .on_hover_text(
                         "Flicker from the CPU and the 6847 sharing video RAM. An approximation.",
@@ -1366,11 +1373,13 @@ impl AtomApp {
 
         let texture = self.upload_screen(ui.ctx());
         let available = ui.available_size();
-        let mut scale = (available.x / WIDTH as f32).min(available.y / HEIGHT as f32);
+        let (width, height) = self.atom.bus.framebuffer.shown_size();
+        let (width, height) = (width as f32, height as f32);
+        let mut scale = (available.x / width).min(available.y / height);
         if self.integer_scaling && scale >= 1.0 {
             scale = scale.floor();
         }
-        let size = Vec2::new(WIDTH as f32, HEIGHT as f32) * scale;
+        let size = Vec2::new(width, height) * scale;
         ui.centered_and_justified(|ui| {
             ui.add(egui::Image::new((texture, size)));
         });
@@ -1487,6 +1496,7 @@ mod settings_tests {
             ram_preset: RamPreset::With16KExpansion,
             video_ram_kb: 3,
             colour_board: false,
+            show_border: false,
             snow: true,
             sid_fitted: false,
             sid_model: SidModel::Mos8580,
