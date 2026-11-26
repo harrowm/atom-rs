@@ -19,8 +19,9 @@ and comments that explain the hardware being modelled.
 * **Front end:** [egui/eframe](https://github.com/emilk/egui) window with a
   debugger made of separate windows.
 * **Sound and tape:** the speaker plays through your sound card (cpal). Tapes
-  load from `.uef` files (also gzipped) and the Atom can record `*SAVE`s to a
-  new `.uef`. `.atm` programs can be loaded straight into memory.
+  load from `.uef` files (also gzipped) or `.csw` files (a recording of the
+  actual signal), there is a tape catalogue window, and the Atom can record
+  `*SAVE`s to a new `.uef`. `.atm` programs can be loaded straight into memory.
 * **Memory:** the Atom is emulated with its RAM expansion by default (about 31K:
   `0000-09FF` and `0B00-7FFF`, with the disk controller at `0A00`), since a lot
   of software keeps its variables in the low pages. Six RAM sizes, from a bare
@@ -222,7 +223,7 @@ cargo run --release -- --tape chuckie.uef --fast-tape --run 'LOAD "CHUCKIE"\nRUN
 | Option | Meaning |
 |--------|---------|
 | `--disk FILE`, `--disk1 FILE` | `.ssd` / `.dsd` image in drive 0 / 1 |
-| `--tape FILE` | `.uef` tape (plain or gzipped); plays itself when asked |
+| `--tape FILE` | `.uef` tape (plain or gzipped) or `.csw` tape; plays itself when asked |
 | `--run TEXT` | text to type after start-up; `\n` is RETURN |
 | `--fast-tape` | maximum speed while the tape is playing |
 | `--state FILE` | start from a saved state |
@@ -379,6 +380,19 @@ screen is a graphics screen the BBC OS writes its own text into. It works in
 either machine mode (in SD card mode only the board's jumper changes). As on the
 real board, the floppy disk system is not available in BBC mode. Choose another machine to go back. Quick check: `PRINT PI` gives 3.14159265.
 
+### Tape formats and the catalogue
+
+Tapes can be **UEF** (describes what is on the tape: carrier, bytes, gaps; the
+usual emulator format) or **CSW** ("Compressed Square Wave": a list of pulse
+lengths, a copy of the sound). A CSW file is turned back into bytes by
+measuring its pulses against the Atom's two tones (1200 Hz and 2400 Hz), so a
+tape running a little fast or slow still reads. **Tape > Catalogue...** lists
+the files on the inserted tape (name, load and run addresses, size, and
+whether all its blocks are there), as in the Atom tape format
+`****`, name, header, data, checksum; it was checked against what the real OS
+writes. CSW version 1 and 2 (including zlib-compressed) are read; only UEF
+can be saved.
+
 ### Disk write protection
 
 Each drive's menu (**Disk > Drive 0**) has a **Write protected** tick, like the
@@ -395,7 +409,7 @@ address) prints `RECORD TAPE` and waits for a key; `*LOAD "NAME"` prints
 * **Saving:** choose *Tape > Record*, run the `*SAVE`, press a key at `RECORD
   TAPE`, wait for the `>` prompt, then *Tape > Stop recording*. The recording
   is now in the player; *Tape > Save tape as UEF...* writes it to a file.
-* **Loading:** *Tape > Insert tape (UEF)...*, type `*LOAD "NAME"` (or just
+* **Loading:** *Tape > Insert tape (UEF or CSW)...*, type `*LOAD "NAME"` (or just
   `*LOAD ""` for the next file), then choose *Tape > Play* and press a key at
   `PLAY TAPE`. Tick *Fast tape* to run at maximum speed while the tape plays.
 * **`.atm` files** (a program saved straight from memory) go into RAM with

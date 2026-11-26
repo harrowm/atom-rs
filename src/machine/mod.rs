@@ -7,6 +7,7 @@ pub mod atm;
 pub mod atom;
 pub mod atommc;
 pub mod autoplay;
+pub mod csw;
 pub mod debug;
 pub mod disk;
 pub mod fdc1770;

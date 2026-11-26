@@ -111,3 +111,65 @@ fn tape_loads_hands_free_with_typist_and_autoplay() {
         atom.screen_text().join("\n")
     );
 }
+
+/// Record a real `*SAVE` on the Atom and return the tape.
+fn recorded_save() -> Option<atom_rs::machine::tape::TapeImage> {
+    let mut atom = booted_atom(120)?;
+    for (i, &byte) in DATA.iter().enumerate() {
+        assert!(atom.bus.poke(START + i as u16, byte));
+    }
+    atom.bus.tape.recording = true;
+    type_text(&mut atom, "*SAVE \"TEST\" 2900 290C\n");
+    type_text(&mut atom, "\n");
+    run_seconds(&mut atom, 25);
+    Some(atom.bus.tape.finish_recording())
+}
+
+/// The catalogue reads what the real OS wrote: the name, where it loads and
+/// runs, and how long it is.
+#[test]
+fn the_catalogue_lists_a_real_save() {
+    let Some(tape) = recorded_save() else { return };
+    let catalogue = tape.catalogue();
+    assert_eq!(catalogue.len(), 1, "{catalogue:?}");
+    let file = &catalogue[0];
+    assert_eq!(file.name, "TEST");
+    assert_eq!(file.length, DATA.len());
+    assert_eq!(file.load_address, START);
+    assert_eq!(file.exec_address, START);
+    assert!(file.complete);
+}
+
+/// A CSW tape (a recording of the actual signal) loads on the real Atom, so
+/// the pulse decoder produces what the OS reads, not just something that
+/// looks right on paper.
+#[test]
+fn a_csw_tape_loads_on_the_real_atom() {
+    use atom_rs::machine::csw;
+    use atom_rs::machine::tape::TapeImage;
+
+    let Some(recorded) = recorded_save() else {
+        return;
+    };
+    let csw_file = csw::encode(&recorded, 48_000);
+    let tape = TapeImage::from_file(&csw_file).expect("the CSW file reads");
+    assert_eq!(
+        tape.catalogue(),
+        recorded.catalogue(),
+        "same files either way"
+    );
+
+    let Some(mut atom) = booted_atom(120) else {
+        return;
+    };
+    atom.bus.tape.insert(tape);
+    type_text(&mut atom, "*LOAD \"TEST\"\n");
+    assert!(screen_string(&atom).contains("PLAY TAPE"));
+    atom.bus.tape.playing = true;
+    type_text(&mut atom, "\n");
+    run_seconds(&mut atom, 25);
+    let loaded: Vec<u8> = (0..DATA.len())
+        .map(|i| atom.bus.peek(START + i as u16))
+        .collect();
+    assert_eq!(loaded, DATA, "{}", atom.screen_text().join("\n"));
+}

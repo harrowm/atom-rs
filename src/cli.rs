@@ -16,7 +16,7 @@ Options:
                    whenever a newer one is published), use it as the SD card
                    and start its menu. Needs roms/ramrom.rom
   --joystick       start with the joystick on (arrow keys, and Space to fire)
-  --tape FILE      insert a tape (.uef). It plays by itself when the Atom
+  --tape FILE      insert a tape (.uef or .csw). It plays by itself when the Atom
                    says PLAY TAPE
   --state FILE     start from a saved state (.atomstate)
   --run TEXT       type TEXT once the Atom has started ("\n" is RETURN).

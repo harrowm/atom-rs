@@ -11,6 +11,7 @@ use super::help_window::HelpWindows;
 use super::keyboard_window::KeyboardWindow;
 use super::keymap::{KeyMap, Target};
 use super::screenshot;
+use super::tape_window::TapeCatalogueWindow;
 use crate::cli::Options;
 use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
@@ -93,6 +94,7 @@ pub struct AtomApp {
     colour_board: bool,
     keyboard_window: KeyboardWindow,
     help: HelpWindows,
+    tape_catalogue: TapeCatalogueWindow,
     /// Types commands for us (from `--run`, or the tape auto-play).
     typist: Typist,
     /// Start the tape by itself when the Atom says PLAY TAPE.
@@ -140,6 +142,7 @@ impl AtomApp {
             colour_board: true,
             keyboard_window: KeyboardWindow::default(),
             help: HelpWindows::default(),
+            tape_catalogue: TapeCatalogueWindow::default(),
             typist: Typist::new(),
             autoplay_tape: false,
             autoplay: TapeAutoplay::default(),
@@ -499,7 +502,7 @@ impl AtomApp {
     fn insert_tape(&mut self) {
         let picked = rfd::FileDialog::new()
             .set_title("Insert tape")
-            .add_filter("UEF tape images", &["uef"])
+            .add_filter("Tape images (UEF or CSW)", &["uef", "csw"])
             .pick_file();
         if let Some(path) = picked {
             self.insert_tape_file(&path);
@@ -509,7 +512,7 @@ impl AtomApp {
     fn insert_tape_file(&mut self, path: &Path) {
         let result = std::fs::read(path)
             .map_err(|e| e.to_string())
-            .and_then(|data| TapeImage::from_uef(&data));
+            .and_then(|data| TapeImage::from_file(&data));
         self.notice = Some(match result {
             Ok(image) => {
                 self.atom.bus.tape.insert(image);
@@ -897,7 +900,7 @@ impl AtomApp {
                 });
             });
             ui.menu_button("Tape", |ui| {
-                if ui.button("Insert tape (UEF)...").clicked() {
+                if ui.button("Insert tape (UEF or CSW)...").clicked() {
                     self.insert_tape();
                     ui.close();
                 }
@@ -906,6 +909,10 @@ impl AtomApp {
                     let playing = self.atom.bus.tape.playing;
                     if ui.button(if playing { "Stop" } else { "Play" }).clicked() {
                         self.atom.bus.tape.playing = !playing;
+                        ui.close();
+                    }
+                    if ui.button("Catalogue...").clicked() {
+                        self.tape_catalogue.open = true;
                         ui.close();
                     }
                     if ui.button("Rewind").clicked() {
@@ -1295,6 +1302,8 @@ impl eframe::App for AtomApp {
             self.help.help_open = true;
         }
         self.help.show(ui.ctx());
+        self.tape_catalogue
+            .show(ui.ctx(), self.atom.bus.tape.image());
 
         // The keyboard mapping window; save the map whenever it changes.
         if self.keyboard_window.show(ui.ctx(), &mut self.keymap)

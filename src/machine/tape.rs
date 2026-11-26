@@ -44,7 +44,119 @@ pub struct TapeImage {
     pub chunks: Vec<TapeChunk>,
 }
 
+/// A file found on a tape (see [`TapeImage::catalogue`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TapeFile {
+    pub name: String,
+    pub load_address: u16,
+    pub exec_address: u16,
+    /// Bytes of data, over all its blocks.
+    pub length: usize,
+    pub blocks: usize,
+    /// Was the last block (the one not marked "more to follow") there?
+    pub complete: bool,
+}
+
+/// Every block starts with these four bytes.
+const BLOCK_MARKER: [u8; 4] = [b'*'; 4];
+/// A file name ends with a carriage return; names are at most 13 characters.
+const MAX_NAME_LENGTH: usize = 13;
+/// After the name: flags, block number (2), length minus 1, execution address
+/// (2) and this block's load address (2).
+const BLOCK_HEADER_LENGTH: usize = 8;
+mod flag {
+    /// Set unless this is the last block of the file.
+    pub const MORE_BLOCKS_FOLLOW: u8 = 0x80;
+    /// Set if the block has any data.
+    pub const HAS_DATA: u8 = 0x40;
+}
+
 impl TapeImage {
+    /// Read a tape file in any supported format: UEF (plain or gzipped) or CSW.
+    pub fn from_file(file: &[u8]) -> Result<Self, String> {
+        if super::csw::is_csw(file) {
+            super::csw::decode(file)
+        } else {
+            Self::from_uef(file)
+        }
+    }
+
+    /// The files on the tape, as the Atom's `*CAT` would show them.
+    ///
+    /// A block is `****`, the name and a carriage return, an 8-byte header
+    /// (flags; block number, high byte first; length minus one; the file's
+    /// execution address and this block's load address, high byte first), the
+    /// data and a checksum byte. The OS writes them like that, which this was
+    /// checked against by recording a real `*SAVE`.
+    pub fn catalogue(&self) -> Vec<TapeFile> {
+        let bytes: Vec<u8> = self
+            .chunks
+            .iter()
+            .filter_map(|chunk| match chunk {
+                TapeChunk::Byte(byte) => Some(*byte),
+                _ => None,
+            })
+            .collect();
+
+        let mut files: Vec<TapeFile> = Vec::new();
+        let mut at = 0;
+        while at + BLOCK_MARKER.len() <= bytes.len() {
+            if bytes[at..at + BLOCK_MARKER.len()] != BLOCK_MARKER {
+                at += 1;
+                continue;
+            }
+            let name_start = at + BLOCK_MARKER.len();
+            let Some(name_length) = bytes[name_start..]
+                .iter()
+                .take(MAX_NAME_LENGTH + 1)
+                .position(|&b| b == b'\r')
+            else {
+                at += 1; // "****" that is not a block (it may be in the data)
+                continue;
+            };
+            let header_start = name_start + name_length + 1;
+            let Some(header) = bytes.get(header_start..header_start + BLOCK_HEADER_LENGTH) else {
+                break; // the tape ends in the middle of a header
+            };
+            let flags = header[0];
+            let number = u16::from_be_bytes([header[1], header[2]]);
+            let data_length = if flags & flag::HAS_DATA != 0 {
+                usize::from(header[3]) + 1
+            } else {
+                0
+            };
+            let exec_address = u16::from_be_bytes([header[4], header[5]]);
+            let load_address = u16::from_be_bytes([header[6], header[7]]);
+            let name: String = bytes[name_start..name_start + name_length]
+                .iter()
+                .map(|&b| b as char)
+                .collect();
+            let block_end = header_start + BLOCK_HEADER_LENGTH + data_length + 1; // + checksum
+            let truncated = block_end > bytes.len();
+            let last = flags & flag::MORE_BLOCKS_FOLLOW == 0;
+
+            if number == 0 || files.last().is_none_or(|file| file.name != name) {
+                files.push(TapeFile {
+                    name,
+                    load_address,
+                    exec_address,
+                    length: 0,
+                    blocks: 0,
+                    complete: false,
+                });
+            }
+            let file = files.last_mut().expect("a file was just added");
+            file.length += data_length;
+            file.blocks += 1;
+            file.complete = last && !truncated;
+            if truncated {
+                break;
+            }
+            at = block_end;
+        }
+        files
+    }
+
     /// Parse a UEF file (gzip-compressed or plain).
     pub fn from_uef(file: &[u8]) -> Result<Self, String> {
         let data = if file.starts_with(&[0x1F, 0x8B]) {
@@ -613,5 +725,110 @@ mod tests {
         player.playing = true;
         player.step();
         assert_eq!(player.progress(), 1.0);
+    }
+
+    // ---- The catalogue ------------------------------------------------------------
+
+    /// The bytes of one tape block, laid out as the Atom's OS writes them.
+    fn block(name: &str, number: u16, data: &[u8], load: u16, exec: u16, last: bool) -> Vec<u8> {
+        let mut block = b"****".to_vec();
+        block.extend(name.bytes());
+        block.push(b'\r');
+        let mut flags = flag::HAS_DATA;
+        if !last {
+            flags |= flag::MORE_BLOCKS_FOLLOW;
+        }
+        block.push(flags);
+        block.extend(number.to_be_bytes());
+        block.push((data.len() - 1) as u8);
+        block.extend(exec.to_be_bytes());
+        block.extend(load.to_be_bytes());
+        block.extend(data);
+        block.push(0x5A); // the checksum (not checked)
+        block
+    }
+
+    fn tape_of(bytes: &[u8]) -> TapeImage {
+        TapeImage {
+            chunks: std::iter::once(TapeChunk::Carrier { cycles: 100 })
+                .chain(bytes.iter().map(|&b| TapeChunk::Byte(b)))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn lists_a_file_made_of_several_blocks() {
+        let mut bytes = block("TEST", 0, &[1; 256], 0x2900, 0x2905, false);
+        bytes.extend(block("TEST", 1, &[2; 256], 0x2A00, 0x2905, false));
+        bytes.extend(block("TEST", 2, &[3; 88], 0x2B00, 0x2905, true));
+        assert_eq!(
+            tape_of(&bytes).catalogue(),
+            vec![TapeFile {
+                name: "TEST".into(),
+                load_address: 0x2900,
+                exec_address: 0x2905,
+                length: 600,
+                blocks: 3,
+                complete: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn lists_several_files_in_the_order_on_the_tape() {
+        let mut bytes = block("INSTRUCTIONS", 0, &[7; 100], 0x2900, 0xC2B2, true);
+        bytes.extend(block("PINBALL", 0, &[8; 200], 0x2900, 0x2900, true));
+        let catalogue = tape_of(&bytes).catalogue();
+        let names: Vec<_> = catalogue.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["INSTRUCTIONS", "PINBALL"]);
+        assert_eq!(
+            (catalogue[0].length, catalogue[0].exec_address),
+            (100, 0xC2B2)
+        );
+        assert_eq!(
+            (catalogue[1].length, catalogue[1].load_address),
+            (200, 0x2900)
+        );
+    }
+
+    #[test]
+    fn a_file_with_its_last_block_missing_is_marked_incomplete() {
+        let bytes = block("PART", 0, &[1; 256], 0x2900, 0x2900, false);
+        let catalogue = tape_of(&bytes).catalogue();
+        assert_eq!(catalogue.len(), 1);
+        assert!(!catalogue[0].complete);
+    }
+
+    #[test]
+    fn a_tape_cut_off_in_a_block_still_lists_what_there_was() {
+        let mut bytes = block("CUT", 0, &[1; 256], 0x2900, 0x2900, true);
+        bytes.truncate(bytes.len() - 100);
+        let catalogue = tape_of(&bytes).catalogue();
+        assert_eq!(catalogue.len(), 1);
+        assert!(!catalogue[0].complete);
+    }
+
+    #[test]
+    fn stars_inside_data_are_not_mistaken_for_a_block() {
+        let mut data = vec![0; 40];
+        data[10..14].copy_from_slice(b"****");
+        let bytes = block("STARS", 0, &data, 0x2900, 0x2900, true);
+        assert_eq!(tape_of(&bytes).catalogue().len(), 1);
+    }
+
+    #[test]
+    fn an_empty_or_unreadable_tape_has_no_files() {
+        assert!(TapeImage::default().catalogue().is_empty());
+        assert!(tape_of(b"this is not an atom tape").catalogue().is_empty());
+    }
+
+    #[test]
+    fn from_file_recognises_both_formats() {
+        let tape = tape_of(&block("BOTH", 0, &[9; 20], 0x2900, 0x2900, true));
+        let from_uef = TapeImage::from_file(&tape.to_uef()).unwrap();
+        let from_csw = TapeImage::from_file(&super::super::csw::encode(&tape, 48_000)).unwrap();
+        assert_eq!(from_uef.catalogue(), tape.catalogue());
+        assert_eq!(from_csw.catalogue(), tape.catalogue());
+        assert!(TapeImage::from_file(b"neither").is_err());
     }
 }
