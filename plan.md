@@ -201,3 +201,6 @@ Menus now follow one rule: anything about the machine's hardware is under **Hard
 
 The Disk menu's drives are greyed out on machines with no floppy drives (SD card, BBC BASIC) and when no disk ROM is loaded, with a hover explanation (for SD card it points to SDDOS and *DIN).
 
+### Help and About
+`ui/help_window.rs`: Help (F1, Help menu) and About open as separate windows like the Keyboard mapping window. The words are plain functions (`help_sections`, `key_table`, `credits`, ...) so they can be tested: every menu and every `Machine` is mentioned, the special keys are in the key table, and both windows are laid out headlessly through egui to catch layout panics. The text is written by hand, so it must be updated with the features (the tests catch missing menus and machines, not stale wording).
+

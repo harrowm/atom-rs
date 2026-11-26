@@ -253,6 +253,14 @@ wherever you start the program.
 | End, Tab | COPY, `^` |
 | F12 | BREAK (reset) |
 | F6, F7 | quick save / quick load of the whole machine |
+| F1 | the built-in help |
+
+### Help and About
+
+The **Help** menu (or **F1**) opens a built-in guide: getting started, how to
+load tapes, disks and SD cards, what the four machines are, what each menu does,
+the keys, and what to try when something is not working. **About** shows the
+version, the licence, the credits and the note on the ROMs.
 
 ### Joystick
 

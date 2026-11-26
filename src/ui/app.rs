@@ -7,6 +7,7 @@ use eframe::egui::{self, Key, TextureHandle, TextureOptions, Vec2};
 
 use super::audio::AudioOutput;
 use super::debug::{AppState, Command, DebugWindows};
+use super::help_window::HelpWindows;
 use super::keyboard_window::KeyboardWindow;
 use super::keymap::{KeyMap, Target};
 use crate::cli::Options;
@@ -88,6 +89,7 @@ pub struct AtomApp {
     /// Is the colour board fitted? (Without it the picture is grey.)
     colour_board: bool,
     keyboard_window: KeyboardWindow,
+    help: HelpWindows,
     /// Types commands for us (from `--run`, or the tape auto-play).
     typist: Typist,
     /// Start the tape by itself when the Atom says PLAY TAPE.
@@ -133,6 +135,7 @@ impl AtomApp {
             card_folder: None,
             colour_board: true,
             keyboard_window: KeyboardWindow::default(),
+            help: HelpWindows::default(),
             typist: Typist::new(),
             autoplay_tape: false,
             autoplay: TapeAutoplay::default(),
@@ -1082,6 +1085,16 @@ impl AtomApp {
                 ui.checkbox(&mut windows.show_breakpoints, "Breakpoints");
                 ui.checkbox(&mut windows.show_hardware, "Chip registers");
             });
+            ui.menu_button("Help", |ui| {
+                if ui.button("Help (F1)").clicked() {
+                    self.help.help_open = true;
+                    ui.close();
+                }
+                if ui.button("About atom-rs").clicked() {
+                    self.help.about_open = true;
+                    ui.close();
+                }
+            });
         });
     }
 
@@ -1200,6 +1213,12 @@ impl eframe::App for AtomApp {
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         egui::CentralPanel::default().show(ui, |ui| self.screen(ui));
+
+        // F1 opens the help. (It is not an Atom key.)
+        if ui.input(|i| i.key_pressed(Key::F1)) {
+            self.help.help_open = true;
+        }
+        self.help.show(ui.ctx());
 
         // The keyboard mapping window; save the map whenever it changes.
         if self.keyboard_window.show(ui.ctx(), &mut self.keymap)
