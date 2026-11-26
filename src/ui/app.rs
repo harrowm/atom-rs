@@ -41,6 +41,10 @@ const SLICE_CYCLES: u64 = 20_000;
 
 const MAX_SPEED: f32 = 100.0;
 
+/// How long sound stays off after the Atom restarts, so the fade out and the
+/// fade back in do not overlap the restart itself.
+const RESTART_AUDIO_HOLD: Duration = Duration::from_millis(150);
+
 /// Frames the Atom needs after power-on before it shows its `>` prompt;
 /// text from `--run` is typed after this.
 const BOOT_FRAMES: u64 = 100;
@@ -75,6 +79,9 @@ pub struct AtomApp {
     keymap: KeyMap,
     /// Do the arrow keys and Space act as a joystick (Input menu)?
     joystick_keys: bool,
+    /// After a restart, sound stays off until this time, so the change in the
+    /// speaker's level does not click (see [`AtomApp::restart_audio`]).
+    audio_hold_until: Option<Instant>,
     /// The folder last used as an SD card, so switching back to the SD card
     /// machine does not ask again.
     card_folder: Option<PathBuf>,
@@ -122,6 +129,7 @@ impl AtomApp {
             quick_state: None,
             keymap: KeyMap::default(),
             joystick_keys: false,
+            audio_hold_until: None,
             card_folder: None,
             colour_board: true,
             keyboard_window: KeyboardWindow::default(),
@@ -201,11 +209,23 @@ impl AtomApp {
         }
     }
 
+    /// Call after anything that restarts the Atom. The speaker and the SID
+    /// change level instantly, and the sound card would play that jump as a
+    /// click. Instead the queued sound is dropped, which lets the output fade
+    /// out, and no new sound is sent for a moment, so it fades back in.
+    fn restart_audio(&mut self) {
+        if let Some(audio) = &self.audio {
+            audio.clear();
+        }
+        self.audio_hold_until = Some(Instant::now() + RESTART_AUDIO_HOLD);
+    }
+
     fn load_roms(&mut self) {
         match self.atom.load_roms(&self.rom_dir) {
             Ok(()) => {
                 self.rom_error = None;
                 self.atom.reset();
+                self.restart_audio();
             }
             Err(message) => self.rom_error = Some(message),
         }
@@ -224,6 +244,7 @@ impl AtomApp {
     /// Switch to an Atom with an AtoMMC SD card whose files are in `folder`.
     fn use_sd_card(&mut self, folder: PathBuf) {
         self.typist.cancel();
+        self.restart_audio();
         self.card_folder = Some(folder.clone());
         self.notice = Some(match self.atom.use_sd_card(&self.rom_dir, folder.clone()) {
             Ok(()) => format!(
@@ -249,6 +270,7 @@ impl AtomApp {
         // Typing queued for the old machine (a --run command still going, say)
         // must not carry on into the new one.
         self.typist.cancel();
+        self.restart_audio();
         if let Some(folder) = self.atom.bus.atommc.card_folder() {
             self.card_folder = Some(folder.to_path_buf()); // remember it on the way out
         }
@@ -275,14 +297,6 @@ impl AtomApp {
         }
     }
 
-    fn use_floppy_disks(&mut self) {
-        self.typist.cancel();
-        self.notice = Some(match self.atom.use_floppy_disks(&self.rom_dir) {
-            Ok(()) => "Back to floppy disks (Atom DOS)".to_string(),
-            Err(message) => format!("Cannot switch back: {message}"),
-        });
-    }
-
     fn load_single_rom(&mut self, slot: RomSlot) {
         let picked = rfd::FileDialog::new()
             .set_title(format!("Load {slot:?} ROM (4096 bytes)"))
@@ -293,7 +307,10 @@ impl AtomApp {
             .map_err(|e| format!("{}: {e}", path.display()))
             .and_then(|data| self.atom.bus.memory.load_rom(slot, &data));
         match result {
-            Ok(()) => self.atom.reset(),
+            Ok(()) => {
+                self.atom.reset();
+                self.restart_audio();
+            }
             Err(message) => self.rom_error = Some(message),
         }
     }
@@ -343,6 +360,7 @@ impl AtomApp {
         // F12 is the BREAK key, which resets the machine.
         if break_pressed {
             self.atom.reset();
+            self.restart_audio();
         }
         if quick_save {
             self.quick_save();
@@ -410,6 +428,13 @@ impl AtomApp {
         let Some(audio) = &self.audio else { return };
         if self.muted || speed > 1.05 {
             return;
+        }
+        // Just after a restart: stay silent for a moment (see restart_audio).
+        if let Some(until) = self.audio_hold_until {
+            if Instant::now() < until {
+                return;
+            }
+            self.audio_hold_until = None;
         }
         // The samples are 0.0-1.0 (the fraction of time the speaker was high);
         // centre them on zero and apply the volume.
@@ -500,6 +525,7 @@ impl AtomApp {
     }
 
     fn restore_state(&mut self, state: &[u8], success_message: &str) {
+        self.restart_audio();
         self.notice = Some(match self.atom.load_state(state) {
             Ok(()) => {
                 self.cycle_debt = 0.0;
@@ -687,7 +713,10 @@ impl AtomApp {
                 self.atom.bus.debug.target = Some(addr);
                 self.resume();
             }
-            Command::Reset => self.atom.reset(),
+            Command::Reset => {
+                self.atom.reset();
+                self.restart_audio();
+            }
             Command::Nmi => self.atom.bus.nmi_edge = true,
             Command::ToggleIrq => self.atom.bus.external_irq = !self.atom.bus.external_irq,
         }
@@ -740,38 +769,6 @@ impl AtomApp {
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                ui.menu_button("Load ROM", |ui| {
-                    for slot in RomSlot::ALL {
-                        if ui.button(format!("{slot:?}...")).clicked() {
-                            self.load_single_rom(slot);
-                            ui.close();
-                        }
-                    }
-                });
-                if ui.button("Choose ROM folder...").clicked() {
-                    self.choose_rom_folder();
-                    ui.close();
-                }
-                ui.separator();
-                let sd_active = self.atom.bus.atommc.card_folder().is_some();
-                if ui
-                    .button("Use a folder as an SD card (AtoMMC)...")
-                    .clicked()
-                {
-                    self.choose_sd_card();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        sd_active,
-                        egui::Button::new("Back to floppy disks (Atom DOS)"),
-                    )
-                    .clicked()
-                {
-                    self.use_floppy_disks();
-                    ui.close();
-                }
-                ui.separator();
                 if ui.button("Save state...").clicked() {
                     self.save_state_file();
                     ui.close();
@@ -815,7 +812,7 @@ impl AtomApp {
                     ui.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
-            ui.menu_button("Machine", |ui| {
+            ui.menu_button("Run", |ui| {
                 if ui.button("Reset (F12)").clicked() {
                     self.execute(Command::Reset);
                     ui.close();
@@ -931,10 +928,6 @@ impl AtomApp {
                     ui.label("No audio device available");
                 }
                 ui.checkbox(&mut self.muted, "Mute");
-                ui.checkbox(
-                    &mut self.atom.bus.memory.sid_fitted,
-                    "SID sound card (at BDC0)",
-                );
                 ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.0).text("volume"));
                 ui.label("Sound plays at normal speed or slower.");
             });
@@ -970,6 +963,7 @@ impl AtomApp {
                                     egui::RadioButton::new(current == preset, preset.label());
                                 if ui.add(choice).clicked() {
                                     self.typist.cancel();
+                                    self.restart_audio();
                                     self.notice = self.atom.set_ram_preset(preset).err();
                                     ui.close();
                                 }
@@ -994,6 +988,7 @@ impl AtomApp {
                                 egui::RadioButton::new(current == bank, format!("Bank {bank:02}"));
                             if ui.add(choice).clicked() {
                                 self.typist.cancel();
+                                self.restart_audio();
                                 self.atom.bus.memory.set_gdos_bank(bank);
                                 self.atom.reset();
                                 ui.close();
@@ -1013,7 +1008,7 @@ impl AtomApp {
                 ui.separator();
 
                 // Settings every machine has.
-                ui.label(egui::RichText::new("Display").strong());
+                ui.label(egui::RichText::new("All machines").strong());
                 ui.menu_button("Video RAM", |ui| {
                     let current = self.atom.bus.memory.video_ram_kb();
                     for kb in 1..=MAX_VIDEO_RAM_KB {
@@ -1028,6 +1023,24 @@ impl AtomApp {
                 });
                 ui.checkbox(&mut self.colour_board, "Colour board");
                 self.atom.bus.framebuffer.monochrome = !self.colour_board;
+                ui.checkbox(
+                    &mut self.atom.bus.memory.sid_fitted,
+                    "SID sound card (at BDC0)",
+                );
+                ui.menu_button("ROMs", |ui| {
+                    ui.menu_button("Load a single ROM", |ui| {
+                        for slot in RomSlot::ALL {
+                            if ui.button(format!("{slot:?}...")).clicked() {
+                                self.load_single_rom(slot);
+                                ui.close();
+                            }
+                        }
+                    });
+                    if ui.button("Choose ROM folder...").clicked() {
+                        self.choose_rom_folder();
+                        ui.close();
+                    }
+                });
             });
             ui.menu_button("Input", |ui| {
                 ui.checkbox(&mut self.joystick_keys, "Joystick on the keyboard");
@@ -1047,7 +1060,7 @@ impl AtomApp {
                 ui.checkbox(&mut windows.show_disassembly, "Disassembly");
                 ui.checkbox(&mut windows.show_memory, "Memory");
                 ui.checkbox(&mut windows.show_breakpoints, "Breakpoints");
-                ui.checkbox(&mut windows.show_hardware, "Hardware");
+                ui.checkbox(&mut windows.show_hardware, "Chip registers");
             });
         });
     }

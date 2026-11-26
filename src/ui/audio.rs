@@ -121,6 +121,14 @@ impl AudioOutput {
         self.sample_rate
     }
 
+    /// Throw away what is queued. The sound card then runs dry, which fades the
+    /// last sample out smoothly; the next samples fade in again. Used when the
+    /// machine restarts, so the jump in the speaker's level is never heard as
+    /// a click.
+    pub fn clear(&self) {
+        self.queue.lock().expect("audio queue lock").samples.clear();
+    }
+
     /// Queue samples (each between -1.0 and 1.0) for playing.
     pub fn push(&self, samples: &[f32]) {
         let Some(&first) = samples.first() else {

@@ -105,7 +105,7 @@ impl DebugWindows {
         window!(
             self.show_hardware,
             "debug-hardware",
-            "Hardware",
+            "Chip registers",
             [380.0, 460.0],
             |ui| { hardware_window::show(ui, atom) }
         );

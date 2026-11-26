@@ -98,8 +98,8 @@ folder and ran it.
 
 This needs `roms/ramrom.rom` (the 128K ROM image Atomulator ships, which holds
 the AtoMMC ROM, the kernel and BASIC to match). It can also be chosen from the
-**Hardware > Machine > SD card (AtoMMC)** (or **File > Use a folder as an SD
-card...**) menu, and choosing **Floppy disk Atom** goes back to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
+**Hardware > Machine > SD card (AtoMMC)** menu (it asks for the folder the first
+time), and choosing **Floppy disk Atom** there goes back to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
 are no floppy drives.
 
 Any folder works as a card, not just the archive: put programs in it (in the
@@ -204,7 +204,7 @@ A few notes:
   is one file or a folder works with `./scripts/make_game.sh AF/PANIC panic`
   (a path under `ASA/`, then a disk name). For a folder the loader is usually
   called `RUNME` or `LOADER`. Some games may need hardware the emulator does not
-  have yet (a joystick, say); the Hardware debug window's
+  have yet (a joystick, say); the *Chip registers* debug window's
   *Unmapped memory* log shows what a game reaches for.
 
 ### Starting a program from the command line
@@ -294,7 +294,7 @@ has reset, pause and a speed slider from 0.1x to 100x (the status bar shows
 the speed actually achieved; click `1x` to go back to real speed). **View**
 toggles integer scaling. **Debug** opens the debugger windows.
 
-The **Hardware** debug window has an *Unmapped memory* log: switch it on and it
+The **Chip registers** debug window has an *Unmapped memory* log: switch it on and it
 lists every address the running program touched that the Atom has nothing at.
 That is how a missing-RAM bug in Chuckie Egg was found, and it is a quick way
 to see what a misbehaving program expects.
@@ -425,7 +425,7 @@ cargo run --release -- --archive --run '*CWD ASA/SID/ATMSID1\n*RUN SIDMENU\n'
 ```
 
 then press **A** or **Z** to choose a tune and **Space** to play it. There is a
-**Sound > SID sound card** switch in the menu. When a tune plays it costs about
+**Hardware > SID sound card** switch in the menu. When a tune plays it costs about
 half the emulator's speed; when nothing uses the SID it costs nothing. Things to
 know: a saved state does not include the SID (it restarts silent), and the chip
 is stepped once per audio sample, so a register write takes effect up to about
@@ -444,7 +444,7 @@ Each tool is a separate window, opened from the **Debug** menu.
 * **Memory:** hex dump of all 64K, colour-coded (blue ROM, green video RAM,
   yellow I/O), jump-to buttons, and a box to write bytes into RAM.
 * **Breakpoints:** execution breakpoints and read/write watchpoints.
-* **Hardware:** video position and mode, 8255 ports, 6522 registers and timers.
+* **Chip registers:** video position and mode, 8255 ports, 6522 registers and timers.
 
 Stepping is per instruction. Single-cycle stepping needs a CPU that can pause
 mid-instruction and is not implemented yet.
