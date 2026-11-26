@@ -67,11 +67,14 @@ pub mod colour {
     pub const CYAN: u8 = 6;
     pub const MAGENTA: u8 = 7;
     pub const ORANGE: u8 = 8;
+    /// The 6847's text background (colour set 0 and 1).
+    pub const DARK_GREEN: u8 = 9;
+    pub const DARK_ORANGE: u8 = 10;
 }
 use colour::*;
 
 /// Red, green, blue for each palette index.
-pub const PALETTE: [[u8; 3]; 9] = [
+pub const PALETTE: [[u8; 3]; 11] = [
     [0, 0, 0],       // black
     [0, 255, 0],     // green
     [255, 255, 0],   // yellow
@@ -81,12 +84,14 @@ pub const PALETTE: [[u8; 3]; 9] = [
     [0, 255, 255],   // cyan
     [255, 0, 255],   // magenta
     [255, 129, 0],   // orange
+    [0, 130, 0],     // dark green (approximate: the 6847 gives no exact value)
+    [130, 55, 0],    // dark orange
 ];
 
 /// What the picture looks like without the colour board: shades of grey.
 /// (Atomulator's monochrome palette: black, then everything lit between mid
 /// and full brightness.)
-pub const MONOCHROME_PALETTE: [[u8; 3]; 9] = [
+pub const MONOCHROME_PALETTE: [[u8; 3]; 11] = [
     [32, 32, 32],    // black
     [220, 220, 220], // green
     [252, 252, 252], // yellow
@@ -96,6 +101,8 @@ pub const MONOCHROME_PALETTE: [[u8; 3]; 9] = [
     [220, 220, 220], // cyan
     [220, 220, 220], // magenta
     [220, 220, 220], // orange
+    [72, 72, 72],    // dark green
+    [72, 72, 72],    // dark orange
 ];
 
 /// The four colours selectable by two bits, for each of the two colour sets.
@@ -171,7 +178,7 @@ impl Framebuffer {
         rgba
     }
 
-    fn palette(&self) -> &'static [[u8; 3]; 9] {
+    fn palette(&self) -> &'static [[u8; 3]; 11] {
         if self.monochrome {
             &MONOCHROME_PALETTE
         } else {
@@ -241,8 +248,14 @@ fn render_text_line(row: &mut [u8], line: usize, ram: &[u8], set: usize) {
     let scanline_in_char = line % GLYPH_HEIGHT;
     let row_start = VIDEO_RAM_START + char_row * COLUMNS;
 
-    // In text mode the colour set chooses green or orange characters.
-    let ink = if set == 0 { GREEN } else { ORANGE };
+    // In text mode the colour set chooses green or orange characters, on a
+    // dark green or dark orange background (as on a real 6847; semigraphics
+    // blocks have a black one).
+    let (ink, background) = if set == 0 {
+        (GREEN, DARK_GREEN)
+    } else {
+        (ORANGE, DARK_ORANGE)
+    };
 
     for column in 0..COLUMNS {
         let code = ram[row_start + column];
@@ -254,7 +267,7 @@ fn render_text_line(row: &mut [u8], line: usize, ram: &[u8], set: usize) {
             let inverse = code & 0x80 != 0;
             for (x, pixel) in cell.iter_mut().enumerate() {
                 let lit = (glyph_row >> (7 - x)) & 1 != 0;
-                *pixel = if lit != inverse { ink } else { BLACK };
+                *pixel = if lit != inverse { ink } else { background };
             }
         }
     }
@@ -332,10 +345,19 @@ mod tests {
         // The 'A' glyph's scanline 4 is 0x14: pixels 3 and 5 of the cell.
         frame.render_line(4, &ram, VideoMode::Text, false);
         let row = &frame.pixels[4 * WIDTH..4 * WIDTH + 8];
-        assert_eq!(
-            row,
-            &[BLACK, BLACK, BLACK, GREEN, BLACK, GREEN, BLACK, BLACK]
-        );
+        // Green on the 6847's dark green background.
+        let d = DARK_GREEN;
+        assert_eq!(row, &[d, d, d, GREEN, d, GREEN, d, d]);
+    }
+
+    #[test]
+    fn the_second_colour_set_is_orange_on_dark_orange() {
+        let ram = ram_with(&[(0x8000, 0x01)]);
+        let mut frame = Framebuffer::new();
+        frame.render_line(4, &ram, VideoMode::Text, true);
+        let row = &frame.pixels[4 * WIDTH..4 * WIDTH + 8];
+        let d = DARK_ORANGE;
+        assert_eq!(row, &[d, d, d, ORANGE, d, ORANGE, d, d]);
     }
 
     #[test]
@@ -344,10 +366,8 @@ mod tests {
         let mut frame = Framebuffer::new();
         frame.render_line(4, &ram, VideoMode::Text, false);
         let row = &frame.pixels[4 * WIDTH..4 * WIDTH + 8];
-        assert_eq!(
-            row,
-            &[GREEN, GREEN, GREEN, BLACK, GREEN, BLACK, GREEN, GREEN]
-        );
+        let d = DARK_GREEN;
+        assert_eq!(row, &[GREEN, GREEN, GREEN, d, GREEN, d, GREEN, GREEN]);
     }
 
     #[test]

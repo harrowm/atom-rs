@@ -1482,8 +1482,17 @@ mod settings_tests {
     use atom_rs::machine::sid::SidModel;
 
     fn app() -> Option<AtomApp> {
-        let app = AtomApp::new(PathBuf::from("roms"), Options::default());
-        app.rom_error.is_none().then_some(app)
+        let mut app = AtomApp::new(PathBuf::from("roms"), Options::default());
+        if app.rom_error.is_some() {
+            return None;
+        }
+        // `new` restores whatever settings file is on this computer; start
+        // every test from the plain floppy disk Atom instead.
+        app.atom
+            .set_machine(Machine::FloppyAtom, &app.rom_dir, None)
+            .ok()?;
+        app.notice = None;
+        Some(app)
     }
 
     /// Saved settings really reach the machine, and reading them back gives

@@ -405,6 +405,9 @@ can be saved.
 
 ### Screen border
 
+Text is drawn as the 6847 does it: bright green characters on a dark green
+background (orange on dark orange in the second colour set), not on black.
+
 The 6847 draws a border round the picture (25 lines above, 26 below, and about
 65 pixels at each side, as in its datasheet): black with text, and green or
 buff (off-white) with graphics, following the colour-set bit. It changes at

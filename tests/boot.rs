@@ -47,17 +47,20 @@ fn basic_runs_a_typed_command() {
 /// Set `SCREENSHOT=/path/file.ppm` to save the picture for a look.
 #[test]
 fn framebuffer_shows_the_screen() {
+    use atom_rs::machine::video::colour::{DARK_GREEN, GREEN};
     let Some(atom) = booted_atom(120) else { return };
     let pixels = &atom.bus.framebuffer.pixels;
     let width = atom_rs::machine::video::WIDTH;
     let lit_in = |lines: std::ops::Range<usize>| {
         pixels[lines.start * width..lines.end * width]
             .iter()
-            .filter(|&&p| p != 0)
+            .filter(|&&p| p == GREEN) // the text, not the dark green background
             .count()
     };
     assert!(lit_in(0..12) > 100, "banner row should be drawn");
     assert!(lit_in(100..192) == 0, "lower screen should be blank");
+    // The blank screen is the 6847's dark green, not black.
+    assert_eq!(pixels[150 * width + 100], DARK_GREEN);
 
     if let Ok(path) = std::env::var("SCREENSHOT") {
         let mut ppm = format!("P6\n{} {}\n255\n", width, pixels.len() / width).into_bytes();
