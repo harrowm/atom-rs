@@ -408,7 +408,9 @@ can be saved.
 Real Atoms flicker a little when the CPU uses video RAM while the 6847 is
 reading it. *Hardware > Video snow (experimental)* models this: if the CPU
 reads or writes video RAM at the moment the 6847 is fetching a byte, the
-picture shows the CPU's byte there. It is an approximation, off by default.
+picture shows the CPU's byte there. It is an approximation, off by default;
+it was compared with a video of a real Atom running Early Warning and makes the
+same short, byte-wide dashes at about the same rate.
 
 ### Disk write protection
 

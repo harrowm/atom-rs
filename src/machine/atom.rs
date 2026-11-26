@@ -123,6 +123,10 @@ pub struct AtomBus {
     /// started in, and what the CPU put on the bus during each of its fetches.
     snow_line: Option<(usize, VideoMode)>,
     snow_bytes: [Option<u8>; FETCH_SLOTS as usize],
+    /// How many times the CPU used video RAM, and how many of those hit a
+    /// fetch (statistics, for comparing the snow model with a real Atom).
+    pub video_ram_accesses: u64,
+    pub snow_events: u64,
 }
 
 impl AtomBus {
@@ -147,6 +151,8 @@ impl AtomBus {
             snow: false,
             snow_line: None,
             snow_bytes: [None; FETCH_SLOTS as usize],
+            video_ram_accesses: 0,
+            snow_events: 0,
         }
     }
 
@@ -220,11 +226,13 @@ impl AtomBus {
     /// default: when a fetch and an access coincide, the fetch gets the byte
     /// that was transferred.
     fn note_snow(&mut self, byte: u8) {
+        self.video_ram_accesses += 1;
         if !self.snow || self.snow_line.is_none() {
             return;
         }
         if let Some(slot) = fetch_slot(self.vdg.cycle_in_line()) {
             self.snow_bytes[slot] = Some(byte);
+            self.snow_events += 1;
         }
     }
 
