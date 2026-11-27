@@ -1212,7 +1212,13 @@ impl AtomApp {
                 }
                 if machine == Machine::SdCard {
                     if let Some(folder) = self.atom.bus.atommc.card_folder() {
-                        ui.label(format!("Card folder: {}", folder.display()));
+                        // Two labels, the second cut short with the whole path
+                        // on hover: one long wrapping label in a menu gets its
+                        // first line stretched across the menu's width.
+                        ui.label("Card folder:");
+                        let path = folder.display().to_string();
+                        ui.add(egui::Label::new(egui::RichText::new(&path).weak()).truncate())
+                            .on_hover_text(path);
                     }
                     if ui.button("Choose another card folder...").clicked() {
                         self.choose_sd_card();
