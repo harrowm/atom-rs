@@ -38,6 +38,25 @@ and comments that explain the hardware being modelled.
 
 See [`plan.md`](plan.md) for the roadmap and design notes.
 
+## Download
+
+Ready-made builds for Linux, macOS and Windows (Intel/AMD and ARM) are on the
+[Releases page](https://github.com/harrowm/atom-rs/releases). Unpack the
+archive and run `atom-rs` (the ROMs are in the `roms` folder beside it); there
+is nothing to install.
+
+* **macOS:** the program is not signed, so macOS refuses a downloaded copy at
+  first. Run `xattr -d com.apple.quarantine atom-rs` in the unpacked folder
+  once (or right-click it and choose Open).
+* **Windows:** if SmartScreen warns about an unrecognised app, choose *More
+  info* then *Run anyway*.
+* **Linux:** needs ALSA (the sound library) and a desktop with X11 or Wayland;
+  `chmod +x atom-rs` if the archive did not keep the permission.
+
+To make a release (for the maintainer): `git tag v0.1.0 && git push --tags`.
+The *Release* workflow builds every platform and publishes the archives with
+checksums.
+
 ## Requirements
 
 * Rust (stable). On macOS with Homebrew:
