@@ -1,7 +1,6 @@
 //! Execution breakpoints and read/write watchpoints.
 
 use atom_rs::machine::Atom;
-use atom_rs::machine::debug::Watchpoint;
 use eframe::egui;
 
 use super::parse_hex;
@@ -37,7 +36,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom) {
         });
     }
     if let Some(addr) = remove {
-        atom.bus.debug.breakpoints.remove(&addr);
+        atom.bus.debug.remove_breakpoint(addr);
     }
     ui.horizontal(|ui| {
         ui.label("$");
@@ -45,7 +44,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom) {
         if ui.button("Add").clicked()
             && let Some(addr) = parse_hex(&state.new_breakpoint)
         {
-            atom.bus.debug.breakpoints.insert(addr);
+            atom.bus.debug.add_breakpoint(addr);
             state.new_breakpoint.clear();
         }
     });
@@ -75,12 +74,38 @@ pub fn show(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom) {
         if ui.button("Add").clicked()
             && let Some(addr) = parse_hex(&state.new_watch_addr)
         {
-            atom.bus.debug.watchpoints.push(Watchpoint {
-                addr,
-                on_read: state.watch_read,
-                on_write: state.watch_write,
-            });
+            atom.bus
+                .debug
+                .add_watchpoint(addr, state.watch_read, state.watch_write);
             state.new_watch_addr.clear();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_window_draws_with_breakpoints_and_watchpoints_listed() {
+        let ctx = egui::Context::default();
+        let mut atom = Atom::new();
+        let mut state = State::default();
+        for listed in [false, true] {
+            if listed {
+                atom.bus.debug.add_breakpoint(0x2900);
+                atom.bus.debug.add_watchpoint(0x0200, true, true);
+            }
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                show(ui, &mut state, &mut atom);
+            });
+            output.textures_delta.clear();
+        }
+    }
+
+    #[test]
+    fn the_new_watch_boxes_start_as_write_only() {
+        let state = State::default();
+        assert!(!state.watch_read && state.watch_write);
+    }
 }

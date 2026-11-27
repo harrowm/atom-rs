@@ -115,3 +115,23 @@ fn unmapped_log(ui: &mut egui::Ui, atom: &mut Atom) {
         ));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_window_draws_with_and_without_the_unmapped_log() {
+        let ctx = egui::Context::default();
+        let mut atom = Atom::new();
+        for log in [false, true] {
+            atom.bus.debug.log_unmapped = log;
+            if log {
+                atom.bus.debug.note_unmapped(0x9F00, false);
+                atom.bus.debug.note_unmapped(0x9F00, true);
+            }
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| show(ui, &mut atom));
+            output.textures_delta.clear();
+        }
+    }
+}

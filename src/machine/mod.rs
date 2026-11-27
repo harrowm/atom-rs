@@ -9,6 +9,8 @@ pub mod atommc;
 pub mod autoplay;
 pub mod csw;
 pub mod debug;
+pub mod debug_console;
+pub mod debug_session;
 pub mod disk;
 pub mod fdc1770;
 pub mod fdc8271;

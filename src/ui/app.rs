@@ -7,7 +7,7 @@ use eframe::egui::{self, Key, TextureHandle, TextureOptions, Vec2};
 
 use super::archive_job::{ArchiveJob, Progress};
 use super::audio::AudioOutput;
-use super::debug::{AppState, Command, DebugWindows};
+use super::debug::{Command, DebugWindows};
 use super::help_window::HelpWindows;
 use super::keyboard_window::KeyboardWindow;
 use super::keymap::{KeyMap, Target};
@@ -19,7 +19,7 @@ use atom_rs::machine::Atom;
 use atom_rs::machine::atm::AtmFile;
 use atom_rs::machine::atom::Machine;
 use atom_rs::machine::autoplay::TapeAutoplay;
-use atom_rs::machine::debug::StopReason;
+use atom_rs::machine::debug_session::DebugSession;
 use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
@@ -27,7 +27,6 @@ use atom_rs::machine::memory::{GDOS_BANKS, MAX_VIDEO_RAM_KB, RamPreset, RomSlot}
 use atom_rs::machine::sid::SidModel;
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
-use atom_rs::machine::vdg6847::CYCLES_PER_LINE;
 
 /// The Atom's CPU clock.
 const CLOCK_HZ: f64 = 1_000_000.0;
@@ -54,18 +53,14 @@ const RESTART_AUDIO_HOLD: Duration = Duration::from_millis(150);
 /// text from `--run` is typed after this.
 const BOOT_FRAMES: u64 = 100;
 
-/// "Run one frame" in the debugger (NTSC: 262 lines).
-const CYCLES_PER_FRAME: u64 = 262 * CYCLES_PER_LINE as u64;
-
 pub struct AtomApp {
     atom: Atom,
     rom_dir: PathBuf,
     /// Set if the ROMs could not be loaded; shown instead of the screen.
     rom_error: Option<String>,
 
-    running: bool,
-    /// Why the last run stopped (breakpoint, watchpoint...), if it did.
-    stop_message: Option<String>,
+    /// Running or paused, and why the last run stopped (see [`DebugSession`]).
+    session: DebugSession,
     debug_windows: DebugWindows,
     /// 1.0 = real Atom speed.
     speed: f32,
@@ -127,8 +122,7 @@ impl AtomApp {
             atom: Atom::new(),
             rom_dir,
             rom_error: None,
-            running: true,
-            stop_message: None,
+            session: DebugSession::default(),
             debug_windows: DebugWindows::default(),
             speed: 1.0,
             integer_scaling: true,
@@ -169,6 +163,7 @@ impl AtomApp {
         windows.show_memory = options.debug;
         windows.show_breakpoints = options.debug;
         windows.show_hardware = options.debug;
+        windows.show_console = options.debug;
         let (keymap, problem) = KeyMap::load();
         app.keymap = keymap;
         if let Some(message) = problem {
@@ -556,7 +551,7 @@ impl AtomApp {
         if self.autoplay_tape {
             self.autoplay.update(&mut self.atom, &mut self.typist);
         }
-        if !self.running || self.rom_error.is_some() {
+        if !self.session.running || self.rom_error.is_some() {
             // Single-stepping in the debugger still makes speaker samples;
             // throw them away so they do not play as a burst on resume.
             self.atom.bus.sound.take_samples();
@@ -570,12 +565,11 @@ impl AtomApp {
         while self.cycle_debt >= 1.0 && now.elapsed() < MAX_EMULATION_TIME_PER_UPDATE {
             let slice = (self.cycle_debt as u64).min(SLICE_CYCLES);
             let start = self.atom.bus.cycles;
-            let stop = self.atom.run_cycles(slice);
+            let stopped = self.session.run_cycles(&mut self.atom, slice);
             let executed = self.atom.bus.cycles - start;
             self.cycle_debt -= executed as f64;
             self.speed_sample_cycles += executed;
-            if stop.is_some() {
-                self.note_stop(stop);
+            if stopped {
                 self.cycle_debt = 0.0;
                 break;
             }
@@ -707,7 +701,7 @@ impl AtomApp {
         self.notice = Some(match self.atom.load_state(state) {
             Ok(()) => {
                 self.cycle_debt = 0.0;
-                self.stop_message = None;
+                self.session.stop_message = None;
                 success_message.to_string()
             }
             Err(message) => format!("Cannot load state: {message}"),
@@ -866,60 +860,9 @@ impl AtomApp {
     // ---- Debugger commands ---------------------------------------------
 
     fn execute(&mut self, command: Command) {
-        match command {
-            Command::Run => self.resume(),
-            Command::Pause => {
-                self.running = false;
-                self.atom.bus.debug.target = None;
-            }
-            Command::Step => self.step_once(),
-            Command::StepOver => match self.atom.step_over_target() {
-                Some(target) => {
-                    self.atom.bus.debug.target = Some(target);
-                    self.resume();
-                }
-                None => self.step_once(),
-            },
-            Command::StepFrame => {
-                self.running = false;
-                self.stop_message = None;
-                self.atom.bus.debug.skip_breakpoint_once = true;
-                let stop = self.atom.run_cycles(CYCLES_PER_FRAME);
-                self.note_stop(stop);
-            }
-            Command::RunTo(addr) => {
-                self.atom.bus.debug.target = Some(addr);
-                self.resume();
-            }
-            Command::Reset => {
-                self.atom.reset();
-                self.restart_audio();
-            }
-            Command::Nmi => self.atom.bus.nmi_edge = true,
-            Command::ToggleIrq => self.atom.bus.external_irq = !self.atom.bus.external_irq,
-        }
-    }
-
-    /// Start running. The first instruction runs even if it sits on a
-    /// breakpoint, otherwise you could never continue from one.
-    fn resume(&mut self) {
-        self.running = true;
-        self.stop_message = None;
-        self.atom.bus.debug.skip_breakpoint_once = true;
-    }
-
-    fn step_once(&mut self) {
-        self.running = false;
-        self.stop_message = None;
-        self.atom.step();
-        let stop = self.atom.bus.debug.stop.take();
-        self.note_stop(stop);
-    }
-
-    fn note_stop(&mut self, reason: Option<StopReason>) {
-        if let Some(reason) = reason {
-            self.running = false;
-            self.stop_message = Some(reason.to_string());
+        self.session.execute(&mut self.atom, command);
+        if command == Command::Reset {
+            self.restart_audio();
         }
     }
 
@@ -1004,7 +947,7 @@ impl AtomApp {
                     self.execute(Command::Reset);
                     ui.close();
                 }
-                let (label, command) = if self.running {
+                let (label, command) = if self.session.running {
                     ("Pause", Command::Pause)
                 } else {
                     ("Resume", Command::Run)
@@ -1305,6 +1248,7 @@ impl AtomApp {
                 ui.checkbox(&mut windows.show_disassembly, "Disassembly");
                 ui.checkbox(&mut windows.show_memory, "Memory");
                 ui.checkbox(&mut windows.show_breakpoints, "Breakpoints");
+                ui.checkbox(&mut windows.show_console, "Command box");
                 ui.checkbox(&mut windows.show_hardware, "Chip registers");
             });
             ui.menu_button("Help", |ui| {
@@ -1323,8 +1267,12 @@ impl AtomApp {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         let regs = self.atom.cpu.regs.clone();
         ui.horizontal(|ui| {
-            ui.label(if self.running { "Running" } else { "Paused" });
-            if let Some(message) = &self.stop_message {
+            ui.label(if self.session.running {
+                "Running"
+            } else {
+                "Paused"
+            });
+            if let Some(message) = &self.session.stop_message {
                 ui.colored_label(egui::Color32::LIGHT_RED, message);
             }
             if self.typist.is_busy() {
@@ -1457,11 +1405,9 @@ impl eframe::App for AtomApp {
         self.save_settings_if_changed(ui.ctx());
 
         // Debugger windows are separate OS windows; they hand back commands.
-        let state = AppState {
-            running: self.running,
-            stop_message: self.stop_message.as_deref(),
-        };
-        let commands = self.debug_windows.show(ui.ctx(), &mut self.atom, &state);
+        let commands = self
+            .debug_windows
+            .show(ui.ctx(), &mut self.atom, &mut self.session);
         for command in commands {
             self.execute(command);
         }

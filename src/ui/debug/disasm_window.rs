@@ -110,3 +110,73 @@ fn start_before(pc: u16, atom: &Atom) -> u16 {
     }
     pc
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `LDA #5 ; STA $0200 ; JSR $2910 ; INC $0200 ; NOP` at $2900.
+    fn atom_with_program() -> Atom {
+        let mut atom = Atom::new();
+        for (i, &byte) in [
+            0xA9, 0x05, 0x8D, 0x00, 0x02, 0x20, 0x10, 0x29, 0xEE, 0x00, 0x02, 0xEA,
+        ]
+        .iter()
+        .enumerate()
+        {
+            atom.bus.poke(0x2900 + i as u16, byte);
+        }
+        atom
+    }
+
+    #[test]
+    fn the_listing_starts_on_an_instruction_boundary_that_leads_to_the_pc() {
+        let atom = atom_with_program();
+        // PC on the INC: the view should start earlier, on a boundary.
+        let start = start_before(0x2908, &atom);
+        assert!(start < 0x2908, "shows what came before");
+        let mut addr = start;
+        while addr < 0x2908 {
+            addr += disassemble(addr, |a| atom.bus.peek(a)).length;
+        }
+        assert_eq!(
+            addr, 0x2908,
+            "and lands exactly on the PC, not in the middle of one"
+        );
+    }
+
+    #[test]
+    fn with_nothing_before_it_the_listing_starts_at_the_pc() {
+        // All zeros before $0000+: BRK is one byte, so any start works; the
+        // function must still return an address that reaches the PC.
+        let atom = Atom::new();
+        let start = start_before(0x0100, &atom);
+        let mut addr = start;
+        while addr < 0x0100 {
+            addr += disassemble(addr, |a| atom.bus.peek(a)).length;
+        }
+        assert_eq!(addr, 0x0100);
+    }
+
+    fn draws(state: &mut State, atom: &mut Atom) -> Vec<Command> {
+        let ctx = egui::Context::default();
+        let mut commands = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            show(ui, state, atom, &mut commands);
+        });
+        output.textures_delta.clear();
+        commands
+    }
+
+    #[test]
+    fn the_window_draws_following_the_pc_and_not() {
+        let mut atom = atom_with_program();
+        atom.cpu.regs.pc = 0x2908;
+        atom.bus.debug.add_breakpoint(0x2905);
+        let mut state = State::default();
+        assert!(draws(&mut state, &mut atom).is_empty());
+        state.follow_pc = false;
+        state.start = 0x2900;
+        assert!(draws(&mut state, &mut atom).is_empty());
+    }
+}

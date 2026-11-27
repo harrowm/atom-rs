@@ -108,6 +108,21 @@ fn region_colour(region: Region) -> Color32 {
     }
 }
 
+/// What the Write button does: put the byte typed in the value box at the
+/// address typed in the address box, and say what happened.
+fn write_byte(atom: &mut Atom, addr_text: &str, value_text: &str) -> String {
+    match (parse_hex(addr_text), parse_hex(value_text)) {
+        (Some(addr), Some(value)) if value <= 0xFF => {
+            if atom.bus.poke(addr, value as u8) {
+                format!("Wrote ${value:02X} to ${addr:04X}")
+            } else {
+                format!("${addr:04X} is not RAM")
+            }
+        }
+        _ => "Enter hex values".to_string(),
+    }
+}
+
 fn poke_box(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom) {
     ui.horizontal(|ui| {
         ui.label("Write $");
@@ -115,16 +130,7 @@ fn poke_box(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom) {
         ui.label("to $");
         ui.add(egui::TextEdit::singleline(&mut state.poke_addr).desired_width(50.0));
         if ui.button("Write").clicked() {
-            state.message = match (parse_hex(&state.poke_addr), parse_hex(&state.poke_value)) {
-                (Some(addr), Some(value)) if value <= 0xFF => {
-                    if atom.bus.poke(addr, value as u8) {
-                        format!("Wrote ${value:02X} to ${addr:04X}")
-                    } else {
-                        format!("${addr:04X} is not RAM")
-                    }
-                }
-                _ => "Enter hex values".to_string(),
-            };
+            state.message = write_byte(atom, &state.poke_addr, &state.poke_value);
         }
         ui.label(RichText::new(&state.message).weak());
     });
@@ -134,4 +140,71 @@ fn poke_box(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom) {
         )
         .weak(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writing_a_byte_changes_ram_and_says_so() {
+        let mut atom = Atom::new();
+        assert_eq!(write_byte(&mut atom, "2900", "A9"), "Wrote $A9 to $2900");
+        assert_eq!(atom.bus.peek(0x2900), 0xA9);
+        assert_eq!(write_byte(&mut atom, "$0300", "0xFF"), "Wrote $FF to $0300");
+        assert_eq!(atom.bus.peek(0x0300), 0xFF);
+        assert_eq!(
+            write_byte(&mut atom, "8000", "41"),
+            "Wrote $41 to $8000",
+            "video RAM too"
+        );
+    }
+
+    #[test]
+    fn rom_and_chips_cannot_be_written() {
+        let mut atom = Atom::new();
+        assert_eq!(write_byte(&mut atom, "C000", "12"), "$C000 is not RAM");
+        assert_eq!(
+            write_byte(&mut atom, "B000", "12"),
+            "$B000 is not RAM",
+            "an I/O address"
+        );
+    }
+
+    #[test]
+    fn bad_input_is_refused_and_changes_nothing() {
+        let mut atom = Atom::new();
+        atom.bus.poke(0x2900, 7);
+        for (addr, value) in [
+            ("zz", "1"),
+            ("2900", "xx"),
+            ("2900", "100"),
+            ("", ""),
+            ("12345", "1"),
+        ] {
+            assert_eq!(
+                write_byte(&mut atom, addr, value),
+                "Enter hex values",
+                "{addr:?} {value:?}"
+            );
+        }
+        assert_eq!(atom.bus.peek(0x2900), 7);
+    }
+
+    fn draws(state: &mut State, atom: &mut Atom) {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            show(ui, state, atom);
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn the_window_draws() {
+        let mut state = State::default();
+        let mut atom = Atom::new();
+        draws(&mut state, &mut atom);
+        state.scroll_to_row = Some(0x2900 / BYTES_PER_ROW);
+        draws(&mut state, &mut atom);
+    }
 }

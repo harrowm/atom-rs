@@ -308,8 +308,8 @@ impl AtomBus {
 impl Bus for AtomBus {
     fn read(&mut self, addr: u16) -> u8 {
         self.tick();
-        if !self.debug.watchpoints.is_empty() {
-            self.debug.note_access(addr, false);
+        if self.debug.watching() {
+            self.debug.note_access(addr, false, None, self.cycles);
         }
         match self.memory.region(addr) {
             Region::Ram | Region::VideoRam => self.memory.ram[addr as usize],
@@ -332,8 +332,8 @@ impl Bus for AtomBus {
 
     fn write(&mut self, addr: u16, value: u8) {
         self.tick();
-        if !self.debug.watchpoints.is_empty() {
-            self.debug.note_access(addr, true);
+        if self.debug.watching() {
+            self.debug.note_access(addr, true, Some(value), self.cycles);
         }
         match self.memory.region(addr) {
             Region::Ram => self.memory.ram[addr as usize] = value,

@@ -5,37 +5,18 @@
 //! main app carries out. That keeps all control of emulation in one place.
 
 mod breakpoints_window;
+mod console_window;
 mod cpu_window;
 mod disasm_window;
 mod hardware_window;
 mod memory_window;
 
 use atom_rs::machine::Atom;
+use atom_rs::machine::debug_session::DebugSession;
 use eframe::egui::{self, ViewportBuilder, ViewportId};
 
-/// Something the user asked the debugger to do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Command {
-    Run,
-    Pause,
-    /// Execute one instruction.
-    Step,
-    /// Like `Step`, but run a whole `JSR` subroutine as one step.
-    StepOver,
-    /// Run for one video frame.
-    StepFrame,
-    /// Run until the PC reaches this address.
-    RunTo(u16),
-    Reset,
-    Nmi,
-    ToggleIrq,
-}
-
-/// What the windows need to know about the app, beyond the machine itself.
-pub struct AppState<'a> {
-    pub running: bool,
-    pub stop_message: Option<&'a str>,
-}
+pub use atom_rs::machine::debug_console::parse_hex;
+pub use atom_rs::machine::debug_session::Command;
 
 /// Which windows are open, plus each window's own little bit of state.
 #[derive(Default)]
@@ -45,15 +26,22 @@ pub struct DebugWindows {
     pub show_memory: bool,
     pub show_breakpoints: bool,
     pub show_hardware: bool,
+    pub show_console: bool,
 
     disassembly: disasm_window::State,
     memory: memory_window::State,
     breakpoints: breakpoints_window::State,
+    console: console_window::State,
 }
 
 impl DebugWindows {
     /// Show every open window and return the commands the user gave.
-    pub fn show(&mut self, ctx: &egui::Context, atom: &mut Atom, app: &AppState) -> Vec<Command> {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        atom: &mut Atom,
+        session: &mut DebugSession,
+    ) -> Vec<Command> {
         let mut commands = Vec::new();
 
         // Each window follows the same pattern; the macro just avoids repeating it.
@@ -79,7 +67,7 @@ impl DebugWindows {
         }
 
         window!(self.show_cpu, "debug-cpu", "CPU", [360.0, 420.0], |ui| {
-            cpu_window::show(ui, atom, app, &mut commands)
+            cpu_window::show(ui, atom, session, &mut commands)
         });
         window!(
             self.show_disassembly,
@@ -103,6 +91,13 @@ impl DebugWindows {
             |ui| { breakpoints_window::show(ui, &mut self.breakpoints, atom) }
         );
         window!(
+            self.show_console,
+            "debug-console",
+            "Command box",
+            [620.0, 440.0],
+            |ui| { console_window::show(ui, &mut self.console, atom, session) }
+        );
+        window!(
             self.show_hardware,
             "debug-hardware",
             "Chip registers",
@@ -111,29 +106,5 @@ impl DebugWindows {
         );
 
         commands
-    }
-}
-
-/// Parse a hex number as typed by a person: `C000`, `$C000` or `0xC000`.
-pub fn parse_hex(text: &str) -> Option<u16> {
-    let text = text.trim();
-    let text = text
-        .strip_prefix('$')
-        .or_else(|| text.strip_prefix("0x"))
-        .unwrap_or(text);
-    u16::from_str_radix(text, 16).ok()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_hex;
-
-    #[test]
-    fn parses_hex_in_common_notations() {
-        assert_eq!(parse_hex("C000"), Some(0xC000));
-        assert_eq!(parse_hex(" $b800 "), Some(0xB800));
-        assert_eq!(parse_hex("0xFF"), Some(0xFF));
-        assert_eq!(parse_hex("zz"), None);
-        assert_eq!(parse_hex("12345"), None, "too big for 16 bits");
     }
 }

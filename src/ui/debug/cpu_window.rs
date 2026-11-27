@@ -2,9 +2,10 @@
 
 use atom_rs::cpu::flags;
 use atom_rs::machine::Atom;
+use atom_rs::machine::debug_session::DebugSession;
 use eframe::egui::{self, DragValue};
 
-use super::{AppState, Command};
+use super::Command;
 
 /// The flags in display order, with their one-letter names.
 const FLAGS: [(char, u8); 8] = [
@@ -18,13 +19,18 @@ const FLAGS: [(char, u8); 8] = [
     ('C', flags::CARRY),
 ];
 
-pub fn show(ui: &mut egui::Ui, atom: &mut Atom, app: &AppState, commands: &mut Vec<Command>) {
-    controls(ui, atom, app, commands);
+pub fn show(
+    ui: &mut egui::Ui,
+    atom: &mut Atom,
+    session: &DebugSession,
+    commands: &mut Vec<Command>,
+) {
+    controls(ui, atom, session, commands);
     ui.separator();
 
     // Registers can only be edited while stopped; otherwise the running
     // program would overwrite your edit a microsecond later.
-    ui.add_enabled_ui(!app.running, |ui| {
+    ui.add_enabled_ui(!session.running, |ui| {
         registers(ui, atom);
         ui.separator();
         flag_checkboxes(ui, atom);
@@ -37,16 +43,21 @@ pub fn show(ui: &mut egui::Ui, atom: &mut Atom, app: &AppState, commands: &mut V
         atom.bus.vdg.frames,
         atom.bus.vdg.line()
     ));
-    if let Some(message) = app.stop_message {
+    if let Some(message) = &session.stop_message {
         ui.colored_label(egui::Color32::LIGHT_RED, message);
     }
     ui.separator();
     stack(ui, atom);
 }
 
-fn controls(ui: &mut egui::Ui, atom: &mut Atom, app: &AppState, commands: &mut Vec<Command>) {
+fn controls(
+    ui: &mut egui::Ui,
+    atom: &mut Atom,
+    session: &DebugSession,
+    commands: &mut Vec<Command>,
+) {
     ui.horizontal_wrapped(|ui| {
-        if app.running {
+        if session.running {
             if ui.button("Pause").clicked() {
                 commands.push(Command::Pause);
             }
@@ -143,4 +154,44 @@ fn stack(ui: &mut egui::Ui, atom: &Atom) {
         })
         .collect();
     ui.monospace(format!("Stack: {}", bytes.join(" ")));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn draws(atom: &mut Atom, session: &DebugSession) -> Vec<Command> {
+        let ctx = egui::Context::default();
+        let mut commands = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            show(ui, atom, session, &mut commands);
+        });
+        output.textures_delta.clear();
+        commands
+    }
+
+    #[test]
+    fn the_window_draws_running_paused_and_stopped_at_a_breakpoint() {
+        let mut atom = Atom::new();
+        let mut session = DebugSession::default();
+        assert!(draws(&mut atom, &session).is_empty(), "nothing is pressed");
+        session.running = false;
+        draws(&mut atom, &session);
+        session.stop_message = Some("Breakpoint at $2900".to_string());
+        draws(&mut atom, &session);
+        atom.bus.external_irq = true;
+        draws(&mut atom, &session);
+    }
+
+    #[test]
+    fn every_flag_has_its_own_bit_and_letter() {
+        let masks: Vec<u8> = FLAGS.iter().map(|&(_, mask)| mask).collect();
+        assert_eq!(
+            masks.iter().fold(0, |all, m| all | m),
+            0xFF,
+            "all eight bits"
+        );
+        let letters: String = FLAGS.iter().map(|&(letter, _)| letter).collect();
+        assert_eq!(letters, "NV-BDIZC");
+    }
 }

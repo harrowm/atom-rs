@@ -546,9 +546,43 @@ Each tool is a separate window, opened from the **Debug** menu.
   yellow I/O), jump-to buttons, and a box to write bytes into RAM.
 * **Breakpoints:** execution breakpoints and read/write watchpoints.
 * **Chip registers:** video position and mode, 8255 ports, 6522 registers and timers.
+* **Command box:** type commands instead of clicking (below).
 
 Stepping is per instruction. Single-cycle stepping needs a CPU that can pause
 mid-instruction and is not implemented yet.
+
+#### The command box
+
+*Debug > Command box* takes typed commands, in the style of Atomulator's
+debugger plus a few more. Numbers are hexadecimal (`2900`, `$2900` or
+`0x2900`), except the number of steps. Pressing Enter on an empty line repeats
+the last command, and the Up and Down keys bring back earlier ones.
+
+| Command | What it does |
+|---|---|
+| `r` | show the registers and flags |
+| `set REG VALUE` | change `a x y sp pc p`, or a flag (`n v d i z c`, 0 or 1) while stopped |
+| `s [n]` | step n instructions (n is decimal), then show where the machine is |
+| `over` | step over a `JSR` as one step |
+| `c`, `p` | continue, pause |
+| `g ADDR` | run until the PC reaches ADDR |
+| `f` | run for one video frame |
+| `d [ADDR]` | disassemble from the PC or ADDR, carrying on if repeated |
+| `m [ADDR]` | dump memory, carrying on if repeated |
+| `writem ADDR V...` | write one or more bytes to RAM |
+| `break` / `bclear ADDR`, `blist` | set, clear and list execution breakpoints |
+| `breakr` / `breakw ADDR` | stop when ADDR is read / written (`bclearr`, `bclearw` clear) |
+| `watchr` / `watchw ADDR` | log reads / writes of ADDR without stopping (`wclearr`, `wclearw`, `wlist`) |
+| `help` | the list |
+
+A session might go: `writem 2900 A9 5A 20 F4 FF 4C 05 29` (a program that prints
+a `Z` through the operating system), `set pc 2900`, `break FFF4`, `c` (it
+stops as the OS is about to print), `set a 41` (change the letter to `A`),
+`c` (the screen shows `A`). Breakpoints stop *before* the instruction;
+read/write breakpoints stop just *after* the instruction that used the
+address. A `watchw` log line shows the byte written and the cycle it happened
+on; a read-modify-write instruction such as `INC` shows a read and then two
+writes (the 6502 writes the old value back before the new one).
 
 ## Tests
 
