@@ -37,13 +37,9 @@ pub struct Release {
 
 /// Where the archive is kept: `~/.cache/atom-rs/archive`.
 pub fn cache_folder() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
+    let home = crate::ui::settings::home_folder()
         .ok_or("cannot find your home folder to keep the archive in")?;
-    Ok(PathBuf::from(home)
-        .join(".cache")
-        .join("atom-rs")
-        .join("archive"))
+    Ok(home.join(".cache").join("atom-rs").join("archive"))
 }
 
 /// Make sure the latest archive is unpacked in `cache` and return the folder

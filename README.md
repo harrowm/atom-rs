@@ -53,6 +53,20 @@ is nothing to install.
 * **Linux:** needs ALSA (the sound library) and a desktop with X11 or Wayland;
   `chmod +x atom-rs` if the archive did not keep the permission.
 
+**Running a download from a terminal.** The command lines in this README are
+written for building from source (`cargo run --release -- OPTIONS`). With a
+download, run the program itself instead, from the unpacked folder:
+
+| From source | macOS / Linux download | Windows download |
+|---|---|---|
+| `cargo run --release -- --archive` | `./atom-rs --archive` | `.\atom-rs.exe --archive` |
+| `cargo run --release -- --tape x.uef` | `./atom-rs --tape x.uef` | `.\atom-rs.exe --tape x.uef` |
+
+On Windows use Command Prompt or PowerShell (`cd` to the unpacked folder first).
+Double-clicking the program starts it with no options. Your settings and the
+archive are kept in `.config\atom-rs` and `.cache\atom-rs` in your home folder
+(`C:\Users\you` on Windows).
+
 To make a release (for the maintainer): `git tag v0.1.0 && git push --tags`.
 The *Release* workflow builds every platform and publishes the archives with
 checksums.

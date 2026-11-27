@@ -5,6 +5,7 @@
 //! default, so a file from an older version still loads. Command-line options
 //! win over what is saved.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -13,10 +14,21 @@ use atom_rs::machine::atom::Machine;
 use atom_rs::machine::memory::{MAX_VIDEO_RAM_KB, RamPreset};
 use atom_rs::machine::sid::SidModel;
 
+/// The user's home folder: `HOME` (macOS and Linux), or `USERPROFILE`, which
+/// is what Windows sets instead.
+pub fn home_folder() -> Option<PathBuf> {
+    home_from(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))
+}
+
+fn home_from(home: Option<OsString>, user_profile: Option<OsString>) -> Option<PathBuf> {
+    home.or(user_profile)
+        .filter(|folder| !folder.is_empty())
+        .map(PathBuf::from)
+}
+
 /// `~/.config/atom-rs`
 pub fn config_folder() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config").join("atom-rs"))
+    Some(home_folder()?.join(".config").join("atom-rs"))
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -103,6 +115,22 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_home_folder_is_home_or_else_the_windows_user_profile() {
+        let os = |s: &str| Some(OsString::from(s));
+        assert_eq!(home_from(os("/Users/m"), None), Some("/Users/m".into()));
+        assert_eq!(
+            home_from(None, os(r"C:\Users\Malcolm")),
+            Some(r"C:\Users\Malcolm".into())
+        );
+        assert_eq!(
+            home_from(os("/home/m"), os("ignored")),
+            Some("/home/m".into())
+        );
+        assert_eq!(home_from(os(""), None), None, "an empty HOME is no home");
+        assert_eq!(home_from(None, None), None);
+    }
 
     #[test]
     fn settings_survive_a_round_trip_through_json() {
