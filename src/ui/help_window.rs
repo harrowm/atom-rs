@@ -124,7 +124,7 @@ fn help_sections() -> &'static [Section] {
             paragraphs: &[
                 "Tape: Tape > Insert tape (.uef or .csw), then type LOAD \"\" (or *RUN \"\"). The tape plays by itself, and Fast tape skips the waiting. Tape > Catalogue lists what is on the tape so you know what to LOAD.",
                 "Floppy disk: Disk > Drive 0 > Insert disk image (.ssd or .dsd), type *DOS to start the disk system, then *. to see the files and *RUN NAME to start one. (Floppy machines only.)",
-                "SD card: Hardware > Machine > SD card, and choose a folder. *CAT lists it, *LOAD and *SAVE work on its files, and *MENU starts the Software Archive's menu if the folder is the archive.",
+                "SD card: Hardware > Machine > SD card. The first time, the Software Archive is downloaded for you (about 16 MB; the status bar shows how it is going) and used as the card; to use a different folder, choose Hardware > Choose another card folder. *CAT lists the card, *LOAD and *SAVE work on its files, and *MENU starts the archive's menu.",
                 "A program file: File > Load .atm file into memory, then File > Run loaded program.",
             ],
         },

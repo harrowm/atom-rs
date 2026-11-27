@@ -1,6 +1,7 @@
 //! The desktop front end, built with eframe/egui.
 
 pub mod app;
+pub mod archive_job;
 pub mod audio;
 pub mod debug;
 pub mod help_window;

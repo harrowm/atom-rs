@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, TextureHandle, TextureOptions, Vec2};
 
+use super::archive_job::{ArchiveJob, Progress};
 use super::audio::AudioOutput;
 use super::debug::{AppState, Command, DebugWindows};
 use super::help_window::HelpWindows;
@@ -90,6 +91,9 @@ pub struct AtomApp {
     /// The folder last used as an SD card, so switching back to the SD card
     /// machine does not ask again.
     card_folder: Option<PathBuf>,
+    /// The standard archive being fetched in the background, so the SD card
+    /// machine can start with it (see [`AtomApp::switch_machine`]).
+    archive_job: Option<ArchiveJob>,
     /// Is the colour board fitted? (Without it the picture is grey.)
     colour_board: bool,
     keyboard_window: KeyboardWindow,
@@ -141,6 +145,7 @@ impl AtomApp {
             fullscreen: false,
             audio_hold_until: None,
             card_folder: None,
+            archive_job: None,
             colour_board: true,
             keyboard_window: KeyboardWindow::default(),
             help: HelpWindows::default(),
@@ -399,8 +404,12 @@ impl AtomApp {
     }
 
     /// Hardware > Machine: become a different kind of Atom. The SD card machine
-    /// needs a folder: the one used last, or else ask.
+    /// needs a folder: the one used last, or else the standard software
+    /// archive, which is downloaded first if it is not there yet. (Another
+    /// folder can be chosen afterwards, in the same menu.)
     fn switch_machine(&mut self, machine: Machine) {
+        // Choosing again while the archive is still coming cancels the wait.
+        self.archive_job = None;
         // Typing queued for the old machine (a --run command still going, say)
         // must not carry on into the new one.
         self.typist.cancel();
@@ -408,14 +417,13 @@ impl AtomApp {
         if let Some(folder) = self.atom.bus.atommc.card_folder() {
             self.card_folder = Some(folder.to_path_buf()); // remember it on the way out
         }
-        let mut folder = self.card_folder.clone();
+        let folder = self.card_folder.clone();
         if machine == Machine::SdCard && folder.is_none() {
-            folder = rfd::FileDialog::new()
-                .set_title("Folder to use as the SD card")
-                .pick_folder();
-            if folder.is_none() {
-                return; // cancelled: stay as we are
-            }
+            self.notice = Some(
+                "Getting the Atom Software Archive (the first time only; about 16 MB)...".into(),
+            );
+            self.archive_job = Some(ArchiveJob::start_standard());
+            return; // the machine changes when it arrives (see `poll_archive_job`)
         }
         match self
             .atom
@@ -428,6 +436,32 @@ impl AtomApp {
                 self.notice = Some(format!("Now: {}", machine.label()));
             }
             Err(message) => self.notice = Some(format!("Cannot switch: {message}")),
+        }
+    }
+
+    /// Called every frame: show how the archive download is going, and when
+    /// it has arrived, start the SD card machine with it.
+    fn poll_archive_job(&mut self) {
+        let Some(job) = &mut self.archive_job else {
+            return;
+        };
+        for report in job.poll() {
+            match report {
+                Progress::Said(message) => self.notice = Some(message),
+                Progress::Done(Ok(folder)) => {
+                    self.archive_job = None;
+                    self.use_sd_card(folder);
+                    return;
+                }
+                Progress::Done(Err(message)) => {
+                    self.archive_job = None;
+                    self.notice = Some(format!(
+                        "Could not get the software archive: {message}. Check your internet \
+                         connection, or start with --sdcard FOLDER to use a folder you have."
+                    ));
+                    return;
+                }
+            }
         }
     }
 
@@ -1389,6 +1423,7 @@ impl AtomApp {
 impl eframe::App for AtomApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_keyboard(ctx);
+        self.poll_archive_job();
         self.run_emulation();
         ctx.request_repaint(); // keep emulating even when nothing else changes
     }
@@ -1545,5 +1580,80 @@ mod settings_tests {
         };
         app.apply_settings(&saved, false);
         assert_eq!(app.atom.machine(), Machine::FloppyAtom);
+    }
+}
+
+#[cfg(test)]
+mod archive_job_tests {
+    use super::*;
+    use crate::cli::Options;
+    use std::time::{Duration, Instant};
+
+    fn app() -> Option<AtomApp> {
+        let mut app = AtomApp::new(PathBuf::from("roms"), Options::default());
+        if app.rom_error.is_some() || !Path::new("roms/ramrom.rom").exists() {
+            return None;
+        }
+        app.atom
+            .set_machine(Machine::FloppyAtom, &app.rom_dir, None)
+            .ok()?;
+        app.card_folder = None;
+        Some(app)
+    }
+
+    fn poll_until_finished(app: &mut AtomApp) {
+        let start = Instant::now();
+        while app.archive_job.is_some() && start.elapsed() < Duration::from_secs(5) {
+            app.poll_archive_job();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(app.archive_job.is_none(), "the job never finished");
+    }
+
+    #[test]
+    fn when_the_archive_arrives_the_sd_card_machine_starts_with_it() {
+        let Some(mut app) = app() else { return };
+        let folder = std::env::temp_dir().join("atom-rs-test-archive");
+        std::fs::create_dir_all(&folder).unwrap();
+        let sent = folder.clone();
+        app.archive_job = Some(ArchiveJob::spawn(move |say| {
+            say("Downloading archive...");
+            Ok(sent)
+        }));
+        poll_until_finished(&mut app);
+        assert_eq!(app.atom.machine(), Machine::SdCard);
+        assert_eq!(app.card_folder.as_deref(), Some(folder.as_path()));
+        assert!(app.notice.is_some_and(|n| n.starts_with("SD card:")));
+    }
+
+    #[test]
+    fn a_failed_download_says_why_and_leaves_the_machine_alone() {
+        let Some(mut app) = app() else { return };
+        app.archive_job = Some(ArchiveJob::spawn(|_| Err("no network".to_string())));
+        poll_until_finished(&mut app);
+        assert_eq!(app.atom.machine(), Machine::FloppyAtom);
+        let notice = app.notice.unwrap();
+        assert!(
+            notice.contains("no network") && notice.contains("--sdcard"),
+            "{notice}"
+        );
+    }
+
+    #[test]
+    fn choosing_another_machine_cancels_the_wait() {
+        let Some(mut app) = app() else { return };
+        app.archive_job = Some(ArchiveJob::spawn(|_| {
+            std::thread::sleep(Duration::from_millis(300));
+            Ok(PathBuf::from("/nowhere"))
+        }));
+        app.switch_machine(Machine::GdosAtom);
+        assert!(app.archive_job.is_none());
+        std::thread::sleep(Duration::from_millis(400));
+        app.poll_archive_job();
+        assert_eq!(
+            app.atom.machine(),
+            Machine::GdosAtom,
+            "the late archive must not switch it"
+        );
     }
 }

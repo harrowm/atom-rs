@@ -132,8 +132,13 @@ folder and ran it.
 
 This needs `roms/ramrom.rom` (the 128K ROM image Atomulator ships, which holds
 the AtoMMC ROM, the kernel and BASIC to match). It can also be chosen from the
-**Hardware > Machine > SD card (AtoMMC)** menu (it asks for the folder the first
-time), and choosing **Floppy disk Atom** there goes back to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
+**Hardware > Machine > SD card (AtoMMC)** menu: the first time, the standard
+archive (the same one `--archive` keeps in `~/.cache/atom-rs/archive`) is
+downloaded in the background, with progress in the status bar, and the Atom
+restarts as an SD card machine when it arrives, so you can just type `*MENU`.
+*Choose another card folder...* in the same menu switches to a different
+folder, and the choice is remembered. Choosing **Floppy disk Atom** goes back
+to Atom DOS. In this mode the Atom reports `ACORN ATOM + ATOMMC2` and there
 are no floppy drives.
 
 Any folder works as a card, not just the archive: put programs in it (in the
