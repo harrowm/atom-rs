@@ -51,7 +51,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          # The OS too: a cache built on another Ubuntu version does not fit.
+          key: ${{ matrix.os }}-${{ matrix.target }}
 
       # The tests that need downloaded data skip themselves here (the full set
       # runs in CI); the ones that boot the real ROMs run on every platform
