@@ -148,7 +148,7 @@ fn help_sections() -> &'static [Section] {
                 "Hardware: the kind of machine, its RAM, the video RAM, the colour board, the screen border, video snow, the SID sound card and its model, and the ROMs.",
                 "Your choices (machine, RAM, sound, display and so on) are remembered next time. They are kept in ~/.config/atom-rs/settings.json; delete that file to start afresh.",
                 "Input: the joystick on the keyboard (arrow keys and Space), and the keyboard mapping window.",
-                "View: how the picture is scaled, and full screen. Debug: windows for the CPU, a disassembler, memory, breakpoints and the chips, and a command box where you type commands such as break 2900, s 10, set a 41 or help.",
+                "View: how the picture is scaled, and full screen. Debug: windows for the CPU, a disassembler, memory, breakpoints and the chips, a command box where you type commands such as break 2900, break 2900 if a==5, s 10, out, set a 41 or help, and an instruction history that records what ran.",
             ],
         },
         Section {

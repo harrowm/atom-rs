@@ -10,7 +10,8 @@
 //! print. It does not draw anything, which keeps it easy to test.
 
 use super::atom::Atom;
-use super::debug::TraceHit;
+use super::condition::Condition;
+use super::debug::{HISTORY_LENGTH, HistoryEntry, TraceHit};
 use super::debug_session::{Command, DebugSession};
 use crate::cpu::disasm::disassemble;
 use crate::cpu::flags;
@@ -27,6 +28,7 @@ Debugger commands (numbers are hexadecimal except step counts; Enter repeats the
                  only while the machine is stopped
   s [n]          step n instructions (n is decimal; 1 if no n)
   over           step over a JSR as one step
+  out            run until the current subroutine returns
   c              continue running
   g ADDR         run until the PC reaches ADDR
   f              run for one video frame
@@ -36,12 +38,22 @@ Debugger commands (numbers are hexadecimal except step counts; Enter repeats the
   writem A V...  write one or more bytes to RAM starting at A
 
   break ADDR     stop before the instruction at ADDR      (bclear ADDR removes it)
+  break ADDR if COND   ...but only when COND is true, e.g.  break 2906 if x==3 && [0200]>2
   breakr ADDR    stop when ADDR is read                   (bclearr ADDR)
   breakw ADDR    stop when ADDR is written                (bclearw ADDR)
   blist          list the breakpoints
   watchr ADDR    log reads of ADDR, without stopping      (wclearr ADDR)
   watchw ADDR    log writes of ADDR, without stopping     (wclearw ADDR)
   wlist          list the logging watches
+
+  trace on|off   record every instruction that runs (the last 10000 are kept)
+  trace clear    forget what was recorded
+  history [n]    show the last n recorded instructions, with the registers before each
+                 (n is decimal; 16 if none)
+
+A condition compares registers (a x y sp pc p), flags (n v d i z c; 0 or 1),
+memory ([2900]) and hex numbers with == != < <= > >=, joined by &&. A bare letter
+is a register or flag, so write the number C as $c.
 
   help           this list";
 
@@ -90,6 +102,9 @@ impl Console {
             "d" => self.disassemble(&args, atom),
             "s" => self.step(&args, atom, session),
             "over" => self.control(Command::StepOver, atom, session),
+            "out" => self.control(Command::StepOut, atom, session),
+            "trace" => trace(&args, atom),
+            "history" => history(&args, atom),
             "c" => self.control(Command::Run, atom, session),
             "f" => self.control(Command::StepFrame, atom, session),
             "p" => self.control(Command::Pause, atom, session),
@@ -97,10 +112,7 @@ impl Console {
                 Ok(addr) => self.control(Command::RunTo(addr), atom, session),
                 Err(message) => message,
             },
-            "break" => change_breakpoint(&args, "break", atom, |d, a| {
-                d.add_breakpoint(a);
-                format!("Breakpoint at {a:04X}")
-            }),
+            "break" => set_breakpoint(&args, atom),
             "bclear" => change_breakpoint(&args, "bclear", atom, |d, a| {
                 if d.remove_breakpoint(a) {
                     format!("Cleared the breakpoint at {a:04X}")
@@ -212,6 +224,7 @@ impl Console {
         match command {
             _ if session.running => match command {
                 Command::StepOver => "Stepping over the call; running until it returns".to_string(),
+                Command::StepOut => "Running until this routine returns".to_string(),
                 Command::RunTo(addr) => format!("Running to {addr:04X}"),
                 _ => "Running".to_string(),
             },
@@ -333,6 +346,127 @@ fn watch(
     }
 }
 
+/// `break ADDR` or `break ADDR if CONDITION`.
+fn set_breakpoint(args: &[&str], atom: &mut Atom) -> String {
+    let [addr_text, rest @ ..] = args else {
+        return "Usage: break ADDR [if CONDITION]".to_string();
+    };
+    let Some(addr) = parse_hex(addr_text) else {
+        return not_hex(addr_text);
+    };
+    match rest {
+        [] => {
+            atom.bus.debug.add_breakpoint(addr);
+            format!("Breakpoint at {addr:04X}")
+        }
+        [word, condition @ ..] if word.eq_ignore_ascii_case("if") && !condition.is_empty() => {
+            match Condition::parse(&condition.join(" ")) {
+                Ok(condition) => {
+                    let report = format!("Breakpoint at {addr:04X} if {condition}");
+                    atom.bus.debug.add_conditional_breakpoint(addr, condition);
+                    report
+                }
+                Err(message) => message,
+            }
+        }
+        _ => "Usage: break ADDR [if CONDITION]".to_string(),
+    }
+}
+
+/// `trace on`, `trace off`, `trace clear`, or just `trace` for the state.
+fn trace(args: &[&str], atom: &mut Atom) -> String {
+    let debug = &mut atom.bus.debug;
+    match args.first().map(|a| a.to_ascii_lowercase()).as_deref() {
+        None => format!(
+            "Recording is {}; {} instructions are kept",
+            if debug.recording { "on" } else { "off" },
+            debug.history_len()
+        ),
+        Some("on") => {
+            debug.recording = true;
+            format!("Recording every instruction (the last {HISTORY_LENGTH} are kept)")
+        }
+        Some("off") => {
+            debug.recording = false;
+            format!(
+                "Stopped recording; {} instructions are kept (history shows them)",
+                debug.history_len()
+            )
+        }
+        Some("clear") => {
+            debug.clear_history();
+            "Forgot the recorded instructions".to_string()
+        }
+        Some(_) => "Usage: trace on|off|clear".to_string(),
+    }
+}
+
+/// `history [n]`: the last n recorded instructions.
+fn history(args: &[&str], atom: &Atom) -> String {
+    let count = match args.first() {
+        None => 16,
+        Some(arg) => match arg.parse::<usize>() {
+            Ok(count) => count,
+            Err(_) => return format!("'{arg}' is not a number of instructions (decimal)"),
+        },
+    };
+    history_report(atom, count)
+}
+
+/// The last `count` recorded instructions, oldest first, one per line.
+pub fn history_report(atom: &Atom, count: usize) -> String {
+    let debug = &atom.bus.debug;
+    if debug.history_len() == 0 {
+        return if debug.recording {
+            "Nothing has run since recording started".to_string()
+        } else {
+            "Nothing recorded. Type trace on, then run something".to_string()
+        };
+    }
+    let lines: Vec<String> = debug
+        .recent_history(count)
+        .map(format_history_entry)
+        .collect();
+    lines.join("\n")
+}
+
+/// `    12345  2902  8D 00 02  STA $0200      A=05 X=00 Y=00 S=FD ..-...Z.`
+pub fn format_history_entry(entry: &HistoryEntry) -> String {
+    let regs = &entry.regs;
+    let state = format!(
+        "A={:02X} X={:02X} Y={:02X} S={:02X} {}",
+        regs.a,
+        regs.x,
+        regs.y,
+        regs.sp,
+        flag_letters(regs)
+    );
+    if entry.interrupt {
+        return format!(
+            "{:>9}  ----  interrupt taken (was about to run {:04X})  {state}",
+            entry.cycle, regs.pc
+        );
+    }
+    let pc = regs.pc;
+    let instruction = disassemble(pc, |addr| {
+        entry
+            .bytes
+            .get(addr.wrapping_sub(pc) as usize)
+            .copied()
+            .unwrap_or(0)
+    });
+    let bytes: Vec<String> = entry.bytes[..instruction.length as usize]
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect();
+    format!(
+        "{:>9}  {pc:04X}  {:<8}  {:<13} {state}",
+        entry.cycle,
+        bytes.join(" "),
+        instruction.text
+    )
+}
+
 fn change_breakpoint(
     args: &[&str],
     name: &str,
@@ -348,13 +482,17 @@ fn change_breakpoint(
 fn breakpoint_list(atom: &Atom) -> String {
     let debug = &atom.bus.debug;
     let mut lines = Vec::new();
-    if !debug.breakpoints.is_empty() {
-        let list: Vec<String> = debug
-            .breakpoints
-            .iter()
-            .map(|a| format!("{a:04X}"))
-            .collect();
-        lines.push(format!("Breakpoints: {}", list.join(" ")));
+    let always: Vec<String> = debug
+        .breakpoints
+        .iter()
+        .filter(|addr| !debug.conditions.contains_key(addr))
+        .map(|a| format!("{a:04X}"))
+        .collect();
+    if !always.is_empty() {
+        lines.push(format!("Breakpoints: {}", always.join(" ")));
+    }
+    for (addr, condition) in &debug.conditions {
+        lines.push(format!("Breakpoint {addr:04X} if {condition}"));
     }
     lines.extend(watch_lines(&debug.watchpoints, "Break on"));
     if lines.is_empty() {
@@ -417,7 +555,21 @@ pub fn describe_trace(hit: &TraceHit) -> String {
 /// when set and `.` when clear.
 fn registers_report(atom: &Atom) -> String {
     let r = &atom.cpu.regs;
-    let letters: String = [
+    format!(
+        "A={:02X} X={:02X} Y={:02X} S={:02X} PC={:04X} P={:02X} ({})",
+        r.a,
+        r.x,
+        r.y,
+        r.sp,
+        r.pc,
+        r.p,
+        flag_letters(r)
+    )
+}
+
+/// `NV-BDIZC`, with `.` in place of a letter whose flag is clear.
+fn flag_letters(regs: &crate::cpu::Registers) -> String {
+    [
         ('N', flags::NEGATIVE),
         ('V', flags::OVERFLOW),
         ('-', flags::UNUSED),
@@ -428,12 +580,8 @@ fn registers_report(atom: &Atom) -> String {
         ('C', flags::CARRY),
     ]
     .iter()
-    .map(|&(letter, mask)| if r.flag(mask) { letter } else { '.' })
-    .collect();
-    format!(
-        "A={:02X} X={:02X} Y={:02X} S={:02X} PC={:04X} P={:02X} ({letters})",
-        r.a, r.x, r.y, r.sp, r.pc, r.p
-    )
+    .map(|&(letter, mask)| if regs.flag(mask) { letter } else { '.' })
+    .collect()
 }
 
 /// The registers and the instruction about to run.
@@ -830,11 +978,198 @@ mod tests {
     #[test]
     fn missing_or_bad_addresses_are_explained() {
         let mut m = machine();
-        assert_eq!(cmd!(m, "break"), "Usage: break ADDR");
-        assert_eq!(cmd!(m, "break 1 2"), "Usage: break ADDR");
+        assert_eq!(cmd!(m, "break"), "Usage: break ADDR [if CONDITION]");
+        assert_eq!(cmd!(m, "break 1 2"), "Usage: break ADDR [if CONDITION]");
         assert!(cmd!(m, "break xyz").contains("not a hex number"));
         assert!(cmd!(m, "g").contains("Usage: g ADDR"));
         assert!(cmd!(m, "s abc").contains("not a number of steps"));
         assert_eq!(m.0.cpu.regs.pc, 0x2900, "nothing ran");
+    }
+
+    // ---- Conditional breakpoints --------------------------------------------------
+
+    #[test]
+    fn break_if_stops_only_when_the_condition_holds() {
+        let mut m = machine();
+        assert_eq!(
+            cmd!(m, "break 2908 if [0200] == 5"),
+            "Breakpoint at 2908 if [0200]==5"
+        );
+        cmd!(m, "c");
+        assert!(m.1.run_cycles(&mut m.0, 10_000));
+        assert_eq!(m.0.cpu.regs.pc, 0x2908, "after the STA stored 5");
+
+        let mut m = machine();
+        cmd!(m, "break 2908 if [0200]==9");
+        cmd!(m, "c");
+        assert!(
+            !m.1.run_cycles(&mut m.0, 10_000),
+            "the condition is never true"
+        );
+        assert_eq!(m.0.cpu.regs.pc, 0x290C);
+    }
+
+    #[test]
+    fn break_if_understands_registers_flags_and_and() {
+        let mut m = machine();
+        cmd!(m, "break 2902 if a==5 && x==0 && c==0");
+        cmd!(m, "c");
+        assert!(m.1.run_cycles(&mut m.0, 10_000));
+        assert_eq!(m.0.cpu.regs.pc, 0x2902);
+        assert_eq!(m.0.cpu.regs.a, 5);
+    }
+
+    #[test]
+    fn blist_shows_conditions_and_a_plain_break_replaces_one() {
+        let mut m = machine();
+        cmd!(m, "break 2905");
+        cmd!(m, "break 2908 if a==5");
+        assert_eq!(
+            cmd!(m, "blist"),
+            "Breakpoints: 2905\nBreakpoint 2908 if a==5"
+        );
+        assert_eq!(cmd!(m, "break 2908"), "Breakpoint at 2908");
+        assert_eq!(
+            cmd!(m, "blist"),
+            "Breakpoints: 2905 2908",
+            "no longer conditional"
+        );
+        cmd!(m, "break 2905 if x==1");
+        assert_eq!(cmd!(m, "bclear 2905"), "Cleared the breakpoint at 2905");
+        assert_eq!(cmd!(m, "blist"), "Breakpoints: 2908");
+    }
+
+    #[test]
+    fn a_bad_condition_is_explained_and_sets_nothing() {
+        let mut m = machine();
+        assert!(cmd!(m, "break 2908 if q==5").contains("not a register, flag or hex number"));
+        assert!(cmd!(m, "break 2908 if a").contains("needs a comparison"));
+        assert_eq!(cmd!(m, "break 2908 if"), "Usage: break ADDR [if CONDITION]");
+        assert_eq!(
+            cmd!(m, "break 2908 when a==1"),
+            "Usage: break ADDR [if CONDITION]"
+        );
+        assert_eq!(cmd!(m, "blist"), "No breakpoints");
+        assert_eq!(
+            cmd!(m, "BREAK 2908 IF A==5"),
+            "Breakpoint at 2908 if A==5",
+            "any case"
+        );
+    }
+
+    // ---- Step out ------------------------------------------------------------------
+
+    #[test]
+    fn out_runs_until_the_subroutine_returns() {
+        let mut m = machine();
+        cmd!(m, "s 3"); // LDA, STA, JSR: now at the start of the subroutine
+        assert_eq!(m.0.cpu.regs.pc, 0x2910);
+        assert_eq!(cmd!(m, "out"), "Running until this routine returns");
+        assert!(m.1.running);
+        assert!(m.1.run_cycles(&mut m.0, 10_000));
+        assert_eq!(m.0.cpu.regs.pc, 0x2908, "back after the JSR");
+        assert_eq!(m.1.stop_message.as_deref(), Some("Stepped out to $2908"));
+        assert_eq!(m.0.cpu.regs.x, 7, "the rest of the subroutine ran");
+        let after = cmd!(m, "p");
+        assert!(after.contains("PC=2908"), "{after}");
+    }
+
+    // ---- Trace and history ---------------------------------------------------------
+
+    #[test]
+    fn trace_records_and_history_shows_what_ran() {
+        let mut m = machine();
+        assert!(cmd!(m, "history").contains("Nothing recorded"));
+        assert_eq!(
+            cmd!(m, "trace"),
+            "Recording is off; 0 instructions are kept"
+        );
+        assert!(cmd!(m, "trace on").starts_with("Recording every instruction"));
+        assert!(cmd!(m, "history").contains("Nothing has run since recording started"));
+        cmd!(m, "s 3");
+        assert_eq!(cmd!(m, "trace"), "Recording is on; 3 instructions are kept");
+        let history = cmd!(m, "history");
+        let lines: Vec<&str> = history.lines().collect();
+        assert_eq!(lines.len(), 3, "{history}");
+        assert!(
+            lines[0].contains("2900  A9 05") && lines[0].contains("LDA #$05"),
+            "{history}"
+        );
+        assert!(
+            lines[0].contains("A=00"),
+            "the registers are from before: {history}"
+        );
+        assert!(
+            lines[1].contains("2902  8D 00 02") && lines[1].contains("STA $0200"),
+            "{history}"
+        );
+        assert!(lines[1].contains("A=05"), "{history}");
+        assert!(
+            lines[2].contains("2905  20 10 29") && lines[2].contains("JSR $2910"),
+            "{history}"
+        );
+    }
+
+    #[test]
+    fn history_n_shows_the_last_n_and_rejects_nonsense() {
+        let mut m = machine();
+        cmd!(m, "trace on");
+        cmd!(m, "s 5");
+        let two = cmd!(m, "history 2");
+        assert_eq!(two.lines().count(), 2);
+        assert!(
+            two.contains("2910") && two.contains("2912"),
+            "the last two: {two}"
+        );
+        assert!(!two.contains("2905"), "{two}");
+        assert_eq!(cmd!(m, "history 100").lines().count(), 5, "only five ran");
+        assert_eq!(cmd!(m, "history 0"), "", "none asked for");
+        assert!(cmd!(m, "history lots").contains("not a number of instructions"));
+        assert_eq!(
+            cmd!(m, "history").lines().count(),
+            5,
+            "the default is up to 16"
+        );
+    }
+
+    #[test]
+    fn trace_off_keeps_the_history_and_trace_clear_forgets_it() {
+        let mut m = machine();
+        cmd!(m, "trace on");
+        cmd!(m, "s 2");
+        assert!(cmd!(m, "trace off").contains("Stopped recording; 2 instructions are kept"));
+        cmd!(m, "s 2");
+        assert_eq!(
+            cmd!(m, "history").lines().count(),
+            2,
+            "the last two were not recorded"
+        );
+        assert_eq!(cmd!(m, "trace clear"), "Forgot the recorded instructions");
+        assert!(cmd!(m, "history").contains("Nothing recorded"));
+        assert_eq!(cmd!(m, "trace sideways"), "Usage: trace on|off|clear");
+    }
+
+    #[test]
+    fn an_interrupt_shows_in_the_history() {
+        let mut m = machine();
+        cmd!(m, "trace on");
+        cmd!(m, "s 2");
+        m.1.execute(&mut m.0, Command::Nmi);
+        cmd!(m, "s 1");
+        let history = cmd!(m, "history 1");
+        assert!(
+            history.contains("interrupt taken (was about to run 2905)"),
+            "{history}"
+        );
+    }
+
+    #[test]
+    fn history_lines_line_up_in_columns() {
+        let mut m = machine();
+        cmd!(m, "trace on");
+        cmd!(m, "s 3");
+        let history = cmd!(m, "history");
+        let columns: Vec<usize> = history.lines().map(|l| l.find("A=").unwrap()).collect();
+        assert!(columns.windows(2).all(|w| w[0] == w[1]), "{history}");
     }
 }

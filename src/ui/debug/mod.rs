@@ -9,6 +9,7 @@ mod console_window;
 mod cpu_window;
 mod disasm_window;
 mod hardware_window;
+mod history_window;
 mod memory_window;
 
 use atom_rs::machine::Atom;
@@ -27,11 +28,13 @@ pub struct DebugWindows {
     pub show_breakpoints: bool,
     pub show_hardware: bool,
     pub show_console: bool,
+    pub show_history: bool,
 
     disassembly: disasm_window::State,
     memory: memory_window::State,
     breakpoints: breakpoints_window::State,
     console: console_window::State,
+    history: history_window::State,
 }
 
 impl DebugWindows {
@@ -96,6 +99,13 @@ impl DebugWindows {
             "Command box",
             [620.0, 440.0],
             |ui| { console_window::show(ui, &mut self.console, atom, session) }
+        );
+        window!(
+            self.show_history,
+            "debug-history",
+            "Instruction history",
+            [720.0, 460.0],
+            |ui| { history_window::show(ui, &mut self.history, atom) }
         );
         window!(
             self.show_hardware,

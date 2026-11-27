@@ -1249,6 +1249,7 @@ impl AtomApp {
                 ui.checkbox(&mut windows.show_memory, "Memory");
                 ui.checkbox(&mut windows.show_breakpoints, "Breakpoints");
                 ui.checkbox(&mut windows.show_console, "Command box");
+                ui.checkbox(&mut windows.show_history, "Instruction history");
                 ui.checkbox(&mut windows.show_hardware, "Chip registers");
             });
             ui.menu_button("Help", |ui| {

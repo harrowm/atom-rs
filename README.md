@@ -538,13 +538,18 @@ volume register would lose a little detail through.
 Each tool is a separate window, opened from the **Debug** menu.
 
 * **CPU and controls:** registers and flags (editable while stopped), the
-  stack, and Run / Pause / Step / Step over / Frame buttons, plus Reset, NMI
-  and a held-IRQ toggle.
+  stack, and Run / Pause / Step / Step over / Step out / Frame buttons, plus
+  Reset, NMI and a held-IRQ toggle.
 * **Disassembly:** follows the PC. Click the dot to set a breakpoint;
   right-click a line for "Run to here" or "Set PC here".
 * **Memory:** hex dump of all 64K, colour-coded (blue ROM, green video RAM,
   yellow I/O), jump-to buttons, and a box to write bytes into RAM.
-* **Breakpoints:** execution breakpoints and read/write watchpoints.
+* **Breakpoints:** execution breakpoints (optionally *conditional*, see below)
+  and read/write watchpoints.
+* **Instruction history:** a flight recorder. Tick *Record*, run or step, and it
+  lists the last instructions that ran with the registers before each, so
+  after a breakpoint or a crash you can see how the machine got there. It can
+  be saved as a text file.
 * **Chip registers:** video position and mode, 8255 ports, 6522 registers and timers.
 * **Command box:** type commands instead of clicking (below).
 
@@ -564,6 +569,7 @@ the last command, and the Up and Down keys bring back earlier ones.
 | `set REG VALUE` | change `a x y sp pc p`, or a flag (`n v d i z c`, 0 or 1) while stopped |
 | `s [n]` | step n instructions (n is decimal), then show where the machine is |
 | `over` | step over a `JSR` as one step |
+| `out` | run until the current subroutine returns to its caller |
 | `c`, `p` | continue, pause |
 | `g ADDR` | run until the PC reaches ADDR |
 | `f` | run for one video frame |
@@ -571,9 +577,37 @@ the last command, and the Up and Down keys bring back earlier ones.
 | `m [ADDR]` | dump memory, carrying on if repeated |
 | `writem ADDR V...` | write one or more bytes to RAM |
 | `break` / `bclear ADDR`, `blist` | set, clear and list execution breakpoints |
+| `break ADDR if COND` | a conditional breakpoint: stop only when COND is true |
+| `trace on` / `off` / `clear` | record every instruction that runs (or stop, or forget) |
+| `history [n]` | show the last n recorded instructions (n decimal, 16 if none) |
 | `breakr` / `breakw ADDR` | stop when ADDR is read / written (`bclearr`, `bclearw` clear) |
 | `watchr` / `watchw ADDR` | log reads / writes of ADDR without stopping (`wclearr`, `wclearw`, `wlist`) |
 | `help` | the list |
+
+**Conditions.** `break 2906 if x==3`, `break FFF4 if a==21 && [0200]>2`. A
+condition compares registers (`a x y sp pc p`), flags (`n v d i z c`, which are
+0 or 1), memory (`[2900]`) and hex numbers, with `==  !=  <  <=  >  >=`,
+joined by `&&`. A bare letter means the register or flag, so write the number
+C as `$c`. In the Breakpoints window the condition goes in the *if* box, and
+the dot beside the line in the disassembly turns orange (hover for the
+condition).
+
+**Step out** (`out`, or the button) is the one to use after stepping *into* a
+routine: it runs the rest of the routine, calls it makes included, and stops
+just after the `JSR` that called it. An interrupt that happens on the way is
+not mistaken for the routine returning.
+
+**History.** `trace on`, run, and after a stop `history 20` shows what led
+there, for example:
+
+```
+  2012161  2900  A9 5A     LDA #$5A      A=02 X=01 Y=09 S=F6 .V-.....
+  2012163  2902  20 F4 FF  JSR $FFF4     A=5A X=01 Y=09 S=F6 .V-.....
+```
+
+(cycle, address, bytes, instruction, then the registers *before* it ran). An
+interrupt taken shows as `interrupt taken`. The last 10,000 are kept, and
+recording costs a little speed only while it is on.
 
 A session might go: `writem 2900 A9 5A 20 F4 FF 4C 05 29` (a program that prints
 a `Z` through the operating system), `set pc 2900`, `break FFF4`, `c` (it

@@ -79,6 +79,13 @@ fn controls(
             commands.push(Command::StepOver);
         }
         if ui
+            .button("Step out")
+            .on_hover_text("Run until this subroutine returns to its caller")
+            .clicked()
+        {
+            commands.push(Command::StepOut);
+        }
+        if ui
             .button("Frame")
             .on_hover_text("Run for one video frame")
             .clicked()

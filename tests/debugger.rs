@@ -203,3 +203,115 @@ fn the_nmi_and_irq_buttons_reach_the_real_operating_system() {
     let irq_vector = u16::from_le_bytes([d.atom.bus.peek(0xFFFE), d.atom.bus.peek(0xFFFF)]);
     assert_eq!(d.atom.cpu.regs.pc, irq_vector, "the CPU took the IRQ");
 }
+
+// ---- Conditional breakpoints, step out and the history, on the real Atom ----------
+
+#[test]
+fn a_conditional_breakpoint_in_the_real_os_skips_the_calls_that_do_not_match() {
+    let Some(mut d) = Debugging::start() else {
+        return;
+    };
+    d.say(PROGRAM); // prints 'Z' (A=$5A) and then '!' (A=$21)
+    d.say("set pc 2900");
+    assert_eq!(
+        d.say(&format!("break {OSWRCH:04X} if a==21")),
+        "Breakpoint at FFF4 if a==21"
+    );
+    d.say("c");
+    d.run_until_it_stops();
+    let registers = d.say("r");
+    assert!(
+        registers.contains("A=21"),
+        "it let the 'Z' go by: {registers}"
+    );
+    d.say("c"); // carries on from the breakpoint
+    d.atom.run_cycles(200_000);
+    let screen = d.atom.screen_text().join("\n");
+    assert!(screen.contains("Z!"), "both letters were printed: {screen}");
+}
+
+#[test]
+fn step_out_of_a_real_os_routine_returns_to_the_program_that_called_it() {
+    let Some(mut d) = Debugging::start() else {
+        return;
+    };
+    d.say(PROGRAM);
+    d.say("set pc 2900");
+    d.say("s 2"); // LDA #'Z', then JSR: now at the first instruction of OSWRCH
+    assert_eq!(d.atom.cpu.regs.pc, OSWRCH);
+    assert_eq!(d.say("out"), "Running until this routine returns");
+    d.run_until_it_stops();
+    assert_eq!(d.atom.cpu.regs.pc, 0x2905, "back in our program");
+    assert_eq!(
+        d.session.stop_message.as_deref(),
+        Some("Stepped out to $2905")
+    );
+    d.atom.run_cycles(1_000);
+    assert!(
+        d.atom.screen_text().join("\n").contains('Z'),
+        "the OS drew the letter"
+    );
+}
+
+/// An interrupt arriving in the middle of the routine must not be mistaken for
+/// the routine returning: the handler's own RTI is not our way out.
+#[test]
+fn step_out_is_not_fooled_by_an_interrupt_handler_finishing() {
+    use atom_rs::machine::debug_session::Command;
+    let Some(mut d) = Debugging::start() else {
+        return;
+    };
+    d.say(PROGRAM);
+    d.say("set pc 2900");
+    d.say("s 2");
+    assert_eq!(d.atom.cpu.regs.pc, OSWRCH);
+    // The OS's NMI handler is `PHA ; JMP ($0200)`: give it somewhere to go,
+    // as a program using NMI would: a handler at $2930 that is `PLA ; RTI`.
+    d.say("writem 2930 68 40");
+    d.say("writem 0200 30 29");
+    d.say("trace on");
+    d.session.execute(&mut d.atom, Command::Nmi); // taken at the very next step
+    d.say("out");
+    d.run_until_it_stops();
+    assert_eq!(
+        d.atom.cpu.regs.pc, 0x2905,
+        "it came all the way back to our program"
+    );
+    let history = d.say("history 100000");
+    assert!(
+        history.contains("interrupt taken"),
+        "the NMI really happened: {history}"
+    );
+    assert!(
+        history.contains("RTI"),
+        "and its handler returned on the way: {history}"
+    );
+}
+
+#[test]
+fn the_history_shows_how_the_machine_got_to_the_breakpoint() {
+    let Some(mut d) = Debugging::start() else {
+        return;
+    };
+    d.say(PROGRAM);
+    d.say("set pc 2900");
+    d.say(&format!("break {OSWRCH:04X}"));
+    d.say("trace on");
+    d.say("c");
+    d.run_until_it_stops();
+    let last_two = d.say("history 2");
+    let lines: Vec<&str> = last_two.lines().collect();
+    assert_eq!(lines.len(), 2, "{last_two}");
+    assert!(
+        lines[0].contains("2900") && lines[0].contains("LDA #$5A"),
+        "{last_two}"
+    );
+    assert!(
+        lines[1].contains("2902") && lines[1].contains("JSR $FFF4"),
+        "{last_two}"
+    );
+    assert!(
+        lines[1].contains("A=5A"),
+        "the registers before the JSR: {last_two}"
+    );
+}

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::atm::AtmFile;
 use super::atommc::AtoMmc;
-use super::debug::{Debugger, StopReason};
+use super::debug::{Debugger, HistoryEntry, StopReason};
 use super::fdc1770::Fdc1770;
 use super::fdc8271::Fdc8271;
 use super::joystick::Joystick;
@@ -601,7 +601,37 @@ impl Atom {
 
     /// Execute one instruction; returns the cycles it took.
     pub fn step(&mut self) -> u64 {
-        self.cpu.step(&mut self.bus)
+        // The debugger's history and "step out" need to see each step; when
+        // neither is on this costs two flag checks.
+        let (recording, step_out) = (self.bus.debug.recording, self.bus.debug.step_out.is_some());
+        let pc = self.cpu.regs.pc;
+        let mut bytes = [0; 3];
+        if recording || step_out {
+            for (offset, byte) in bytes.iter_mut().enumerate() {
+                *byte = self.bus.peek(pc.wrapping_add(offset as u16));
+            }
+        }
+        if recording {
+            let entry = HistoryEntry {
+                cycle: self.bus.cycles,
+                regs: self.cpu.regs.clone(),
+                bytes,
+                interrupt: false,
+            };
+            self.bus.debug.record(entry);
+        }
+        let cycles = self.cpu.step(&mut self.bus);
+        let interrupted = self.cpu.took_interrupt();
+        if recording && interrupted {
+            self.bus.debug.mark_last_as_interrupt();
+        }
+        if step_out {
+            let pc_now = self.cpu.regs.pc;
+            self.bus
+                .debug
+                .note_step_for_step_out(bytes[0], interrupted, pc_now);
+        }
+        cycles
     }
 
     /// Run until at least `cycles` clock cycles have elapsed, or until a
@@ -609,7 +639,15 @@ impl Atom {
     pub fn run_cycles(&mut self, cycles: u64) -> Option<StopReason> {
         let end = self.bus.cycles + cycles;
         while self.bus.cycles < end {
-            if let Some(reason) = self.bus.debug.check_before_instruction(self.cpu.regs.pc) {
+            let pc = self.cpu.regs.pc;
+            // A breakpoint's condition is looked at only if there is one here.
+            let condition_holds = self
+                .bus
+                .debug
+                .conditions
+                .get(&pc)
+                .is_none_or(|condition| condition.holds(&self.cpu.regs, |a| self.bus.peek(a)));
+            if let Some(reason) = self.bus.debug.check_before_instruction(pc, condition_holds) {
                 return Some(reason);
             }
             self.step();

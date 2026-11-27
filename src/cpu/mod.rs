@@ -49,6 +49,10 @@ pub struct Cpu {
     irq_disable_at_poll: bool,
     /// Set by the `JAM` opcodes, which lock up the processor until reset.
     jammed: bool,
+    /// Was the last [`Cpu::step`] an interrupt being taken, rather than an
+    /// instruction? (For the debugger; not part of the machine's state.)
+    #[serde(skip)]
+    interrupt_taken: bool,
 }
 
 impl Cpu {
@@ -62,6 +66,7 @@ impl Cpu {
             cycles: 0,
             irq_disable_at_poll: true,
             jammed: false,
+            interrupt_taken: false,
         }
     }
 
@@ -84,18 +89,27 @@ impl Cpu {
     /// is pending. Returns how many cycles it took.
     pub fn step(&mut self, bus: &mut impl Bus) -> u64 {
         let start = self.cycles;
+        self.interrupt_taken = false;
         if self.jammed {
             self.read(bus, 0xFFFF);
         } else if bus.take_nmi_edge() {
+            self.interrupt_taken = true;
             self.enter_interrupt(bus, NMI_VECTOR);
             self.irq_disable_at_poll = true;
         } else if bus.irq_asserted() && !self.irq_disable_at_poll {
+            self.interrupt_taken = true;
             self.enter_interrupt(bus, IRQ_VECTOR);
             self.irq_disable_at_poll = true; // entering an interrupt sets the I flag
         } else {
             self.execute_next_instruction(bus);
         }
         self.cycles - start
+    }
+
+    /// Was the last [`Cpu::step`] an interrupt being taken (so no instruction
+    /// ran)?
+    pub fn took_interrupt(&self) -> bool {
+        self.interrupt_taken
     }
 
     fn execute_next_instruction(&mut self, bus: &mut impl Bus) {

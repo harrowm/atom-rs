@@ -60,15 +60,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut State, atom: &mut Atom, commands: &mu
         let has_breakpoint = atom.bus.debug.breakpoints.contains(&addr);
 
         ui.horizontal(|ui| {
-            let dot = RichText::new("●").color(if has_breakpoint {
-                Color32::RED
-            } else {
-                Color32::DARK_GRAY
+            // Red: always stops. Orange: stops only if its condition holds.
+            let condition = atom.bus.debug.conditions.get(&addr).map(|c| c.to_string());
+            let dot = RichText::new("●").color(match (has_breakpoint, &condition) {
+                (false, _) => Color32::DARK_GRAY,
+                (true, None) => Color32::RED,
+                (true, Some(_)) => Color32::from_rgb(255, 160, 0),
             });
-            if ui
-                .add(egui::Label::new(dot).sense(egui::Sense::click()))
-                .clicked()
-            {
+            let mut dot_response = ui.add(egui::Label::new(dot).sense(egui::Sense::click()));
+            if let Some(condition) = &condition {
+                dot_response = dot_response.on_hover_text(format!("Stops if {condition}"));
+            }
+            if dot_response.clicked() {
                 atom.bus.debug.toggle_breakpoint(addr);
             }
             let mut text =
