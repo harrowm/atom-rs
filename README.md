@@ -50,8 +50,10 @@ is nothing to install.
   once (or right-click it and choose Open).
 * **Windows:** if SmartScreen warns about an unrecognised app, choose *More
   info* then *Run anyway*.
-* **Linux:** needs ALSA (the sound library) and a desktop with X11 or Wayland;
-  `chmod +x atom-rs` if the archive did not keep the permission.
+* **Linux:** needs **glibc 2.35 or newer** (Ubuntu 22.04 or later, Debian 12 or
+  later, Fedora 36 or later; `ldd --version` shows yours), ALSA (the sound
+  library, `libasound2`) and a desktop with X11 or Wayland; `chmod +x atom-rs`
+  if the archive did not keep the permission.
 
 **Running a download from a terminal.** The command lines in this README are
 written for building from source (`cargo run --release -- OPTIONS`). With a
