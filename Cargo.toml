@@ -1,6 +1,6 @@
 [package]
 name = "atom-rs"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "A cycle-accurate Acorn Atom emulator (learning project)"
 license = "GPL-2.0-only"
