@@ -1,0 +1,21 @@
+--- src/machine/atm.rs
++++ replace < with == in AtmFile::parse
+@@ -16,17 +16,17 @@
+     pub name: String,
+     pub load_address: u16,
+     pub exec_address: u16,
+     pub data: Vec<u8>,
+ }
+ 
+ impl AtmFile {
+     pub fn parse(file: &[u8]) -> Result<Self, String> {
+-        if file.len() < HEADER_LEN {
++        if file.len() == /* ~ changed by cargo-mutants ~ */ HEADER_LEN {
+             return Err("file is too short to be an .atm file".to_string());
+         }
+         let word = |at: usize| u16::from_le_bytes([file[at], file[at + 1]]);
+         let length = word(20) as usize;
+         let data = file
+             .get(HEADER_LEN..HEADER_LEN + length)
+             .ok_or_else(|| format!("header says {length} bytes but the file is shorter"))?;
+ 

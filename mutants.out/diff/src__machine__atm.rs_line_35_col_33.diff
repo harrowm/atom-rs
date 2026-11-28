@@ -1,0 +1,21 @@
+--- src/machine/atm.rs
++++ replace != with == in AtmFile::parse
+@@ -27,17 +27,17 @@
+         let word = |at: usize| u16::from_le_bytes([file[at], file[at + 1]]);
+         let length = word(20) as usize;
+         let data = file
+             .get(HEADER_LEN..HEADER_LEN + length)
+             .ok_or_else(|| format!("header says {length} bytes but the file is shorter"))?;
+ 
+         let name: String = file[..16]
+             .iter()
+-            .take_while(|&&b| b != 0)
++            .take_while(|&&b| b == /* ~ changed by cargo-mutants ~ */ 0)
+             .map(|&b| {
+                 if (0x20..0x7F).contains(&b) {
+                     b as char
+                 } else {
+                     '?'
+                 }
+             })
+             .collect();

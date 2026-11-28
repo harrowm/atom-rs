@@ -1,0 +1,44 @@
+src/machine/atm.rs:24:23: replace < with == in AtmFile::parse
+src/machine/atm.rs:24:23: replace < with > in AtmFile::parse
+src/machine/atm.rs:27:70: replace + with - in AtmFile::parse
+src/machine/atm.rs:27:70: replace + with * in AtmFile::parse
+src/machine/atm.rs:30:41: replace + with - in AtmFile::parse
+src/machine/atm.rs:30:41: replace + with * in AtmFile::parse
+src/machine/atm.rs:35:33: replace != with == in AtmFile::parse
+src/machine/csw.rs:39:41: replace / with %
+src/machine/csw.rs:39:41: replace / with *
+src/machine/csw.rs:40:40: replace / with %
+src/machine/csw.rs:40:40: replace / with *
+src/machine/csw.rs:42:62: replace / with %
+src/machine/csw.rs:42:62: replace / with *
+src/machine/csw.rs:42:45: replace + with -
+src/machine/csw.rs:42:45: replace + with *
+src/machine/csw.rs:53:5: replace is_csw -> bool with true
+src/machine/csw.rs:53:5: replace is_csw -> bool with false
+src/machine/csw.rs:58:5: replace decode -> Result<TapeImage, String> with Ok(Default::default())
+src/machine/csw.rs:59:36: replace / with % in decode
+src/machine/csw.rs:59:36: replace / with * in decode
+src/machine/csw.rs:62:44: replace * with + in decode
+src/machine/csw.rs:62:44: replace * with / in decode
+src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((0, vec![]))
+src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((0, vec![0]))
+src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((0, vec![1]))
+src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((1, vec![]))
+src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((1, vec![0]))
+src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((1, vec![1]))
+src/machine/csw.rs:71:8: delete ! in read_pulses
+src/machine/csw.rs:71:51: replace != with == in read_pulses
+src/machine/csw.rs:85:39: replace + with * in read_pulses
+src/machine/csw.rs:89:20: replace == with != in read_pulses
+src/machine/csw.rs:112:5: replace run_lengths -> Vec<u32> with vec![]
+src/machine/csw.rs:112:5: replace run_lengths -> Vec<u32> with vec![0]
+src/machine/csw.rs:112:5: replace run_lengths -> Vec<u32> with vec![1]
+src/machine/csw.rs:114:14: replace < with == in run_lengths
+src/machine/csw.rs:114:14: replace < with > in run_lengths
+src/machine/csw.rs:114:14: replace < with <= in run_lengths
+src/machine/csw.rs:115:20: replace != with == in run_lengths
+src/machine/csw.rs:117:16: replace += with -= in run_lengths
+src/machine/csw.rs:118:47: replace + with - in run_lengths
+src/machine/csw.rs:118:47: replace + with * in run_lengths
+src/machine/csw.rs:118:55: replace + with - in run_lengths
+src/machine/csw.rs:118:55: replace + with * in run_lengths

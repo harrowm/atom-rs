@@ -1,0 +1,21 @@
+--- src/machine/csw.rs
++++ replace is_csw -> bool with false
+@@ -45,17 +45,17 @@
+ 
+ const SHORT_PULSES_PER_BIT: usize = 16;
+ const LONG_PULSES_PER_BIT: usize = 8;
+ /// How many pulses a bit may be missing and still count (jitter).
+ const SLACK: usize = 2;
+ 
+ /// Is this a CSW file?
+ pub fn is_csw(file: &[u8]) -> bool {
+-    file.starts_with(SIGNATURE)
++    false /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Read a CSW file into a tape.
+ pub fn decode(file: &[u8]) -> Result<TapeImage, String> {
+     let (sample_rate, pulses) = read_pulses(file)?;
+     let microseconds = 1_000_000.0 / f64::from(sample_rate);
+     let times: Vec<f64> = pulses
+         .iter()

@@ -1,0 +1,3219 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.603070167,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.211202667,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:24:9: replace AtmFile::parse -> Result<Self, String> with Ok(Default::default())",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 9
+            },
+            "end": {
+              "line": 49,
+              "column": 11
+            }
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/src__machine__atm.rs_line_24_col_9.log",
+      "diff_path": "diff/src__machine__atm.rs_line_24_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.441676292,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:24:23: replace < with == in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 23
+            },
+            "end": {
+              "line": 24,
+              "column": 24
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_24_col_23.log",
+      "diff_path": "diff/src__machine__atm.rs_line_24_col_23.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.144033291,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.546036667,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:24:23: replace < with > in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 23
+            },
+            "end": {
+              "line": 24,
+              "column": 24
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_24_col_23_001.log",
+      "diff_path": "diff/src__machine__atm.rs_line_24_col_23_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.668343042,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.542071833,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:24:23: replace < with <= in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 24,
+              "column": 23
+            },
+            "end": {
+              "line": 24,
+              "column": 24
+            }
+          },
+          "replacement": "<=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/src__machine__atm.rs_line_24_col_23_002.log",
+      "diff_path": "diff/src__machine__atm.rs_line_24_col_23_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.70399325,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.548396792,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:27:70: replace + with - in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 27,
+              "column": 70
+            },
+            "end": {
+              "line": 27,
+              "column": 71
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_27_col_70.log",
+      "diff_path": "diff/src__machine__atm.rs_line_27_col_70.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.741966208,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.540488042,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:27:70: replace + with * in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 27,
+              "column": 70
+            },
+            "end": {
+              "line": 27,
+              "column": 71
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_27_col_70_001.log",
+      "diff_path": "diff/src__machine__atm.rs_line_27_col_70_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.724478375,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.588148958,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:30:41: replace + with - in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 30,
+              "column": 41
+            },
+            "end": {
+              "line": 30,
+              "column": 42
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_30_col_41.log",
+      "diff_path": "diff/src__machine__atm.rs_line_30_col_41.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.7926357080000002,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.029001625,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:30:41: replace + with * in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 30,
+              "column": 41
+            },
+            "end": {
+              "line": 30,
+              "column": 42
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_30_col_41_001.log",
+      "diff_path": "diff/src__machine__atm.rs_line_30_col_41_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.7856592089999999,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.544319459,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/atm.rs:35:33: replace != with == in AtmFile::parse",
+          "package": "atom-rs",
+          "file": "src/machine/atm.rs",
+          "function": {
+            "function_name": "AtmFile::parse",
+            "return_type": "-> Result<Self, String>",
+            "span": {
+              "start": {
+                "line": 23,
+                "column": 5
+              },
+              "end": {
+                "line": 50,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 35,
+              "column": 33
+            },
+            "end": {
+              "line": 35,
+              "column": 35
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__atm.rs_line_35_col_33.log",
+      "diff_path": "diff/src__machine__atm.rs_line_35_col_33.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.783401875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.595404,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:39:41: replace / with %",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 39,
+              "column": 41
+            },
+            "end": {
+              "line": 39,
+              "column": 42
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_39_col_41.log",
+      "diff_path": "diff/src__machine__csw.rs_line_39_col_41.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.795695916,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.599438375,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:39:41: replace / with *",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 39,
+              "column": 41
+            },
+            "end": {
+              "line": 39,
+              "column": 42
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_39_col_41_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_39_col_41_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.075326041,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.601039208,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:40:40: replace / with %",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 40,
+              "column": 40
+            },
+            "end": {
+              "line": 40,
+              "column": 41
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_40_col_40.log",
+      "diff_path": "diff/src__machine__csw.rs_line_40_col_40.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.061273791,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.548992625,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:40:40: replace / with *",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 40,
+              "column": 40
+            },
+            "end": {
+              "line": 40,
+              "column": 41
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_40_col_40_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_40_col_40_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.135846333,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.540963375,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:42:62: replace / with %",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 62
+            },
+            "end": {
+              "line": 42,
+              "column": 63
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_42_col_62.log",
+      "diff_path": "diff/src__machine__csw.rs_line_42_col_62.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.108227875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.541116125,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:42:62: replace / with *",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 62
+            },
+            "end": {
+              "line": 42,
+              "column": 63
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_42_col_62_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_42_col_62_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.121559042,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.54623025,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:42:45: replace + with -",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 45
+            },
+            "end": {
+              "line": 42,
+              "column": 46
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_42_col_45.log",
+      "diff_path": "diff/src__machine__csw.rs_line_42_col_45.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.054669042,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.537677333,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:42:45: replace + with *",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": null,
+          "span": {
+            "start": {
+              "line": 42,
+              "column": 45
+            },
+            "end": {
+              "line": 42,
+              "column": 46
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_42_col_45_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_42_col_45_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.101034167,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.545914042,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:53:5: replace is_csw -> bool with true",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "is_csw",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 51,
+                "column": 1
+              },
+              "end": {
+                "line": 54,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 53,
+              "column": 5
+            },
+            "end": {
+              "line": 53,
+              "column": 32
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_53_col_5.log",
+      "diff_path": "diff/src__machine__csw.rs_line_53_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.110766625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.543558792,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:53:5: replace is_csw -> bool with false",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "is_csw",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 51,
+                "column": 1
+              },
+              "end": {
+                "line": 54,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 53,
+              "column": 5
+            },
+            "end": {
+              "line": 53,
+              "column": 32
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_53_col_5_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_53_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.072358417,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.599213209,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:58:5: replace decode -> Result<TapeImage, String> with Ok(Default::default())",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "decode",
+            "return_type": "-> Result<TapeImage, String>",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 58,
+              "column": 5
+            },
+            "end": {
+              "line": 66,
+              "column": 7
+            }
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_58_col_5.log",
+      "diff_path": "diff/src__machine__csw.rs_line_58_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.125207,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.602813041,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:59:36: replace / with % in decode",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "decode",
+            "return_type": "-> Result<TapeImage, String>",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 59,
+              "column": 36
+            },
+            "end": {
+              "line": 59,
+              "column": 37
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_59_col_36.log",
+      "diff_path": "diff/src__machine__csw.rs_line_59_col_36.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.137149541,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.541574167,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:59:36: replace / with * in decode",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "decode",
+            "return_type": "-> Result<TapeImage, String>",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 59,
+              "column": 36
+            },
+            "end": {
+              "line": 59,
+              "column": 37
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_59_col_36_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_59_col_36_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.179076917,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.599830708,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:62:44: replace * with + in decode",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "decode",
+            "return_type": "-> Result<TapeImage, String>",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 62,
+              "column": 44
+            },
+            "end": {
+              "line": 62,
+              "column": 45
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_62_col_44.log",
+      "diff_path": "diff/src__machine__csw.rs_line_62_col_44.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.93490675,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.592556625,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:62:44: replace * with / in decode",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "decode",
+            "return_type": "-> Result<TapeImage, String>",
+            "span": {
+              "start": {
+                "line": 56,
+                "column": 1
+              },
+              "end": {
+                "line": 67,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 62,
+              "column": 44
+            },
+            "end": {
+              "line": 62,
+              "column": 45
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_62_col_44_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_62_col_44_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.889528417,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.600292792,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((0, vec![]))",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 41
+            }
+          },
+          "replacement": "Ok((0, vec![]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_5.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.82678625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.597306208,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((0, vec![0]))",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 41
+            }
+          },
+          "replacement": "Ok((0, vec![0]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_5_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.115138292,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.597531166,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((0, vec![1]))",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 41
+            }
+          },
+          "replacement": "Ok((0, vec![1]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_5_002.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_5_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.063699125,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.596683041,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((1, vec![]))",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 41
+            }
+          },
+          "replacement": "Ok((1, vec![]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_5_003.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_5_003.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.167966125,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.598033833,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((1, vec![0]))",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 41
+            }
+          },
+          "replacement": "Ok((1, vec![0]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_5_004.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_5_004.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.154917458,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.759356041,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:5: replace read_pulses -> Result<(u32, Vec<u32>), String> with Ok((1, vec![1]))",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 5
+            },
+            "end": {
+              "line": 106,
+              "column": 41
+            }
+          },
+          "replacement": "Ok((1, vec![1]))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_5_005.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_5_005.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.051598166,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.600662833,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:22: replace || with && in read_pulses",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 22
+            },
+            "end": {
+              "line": 71,
+              "column": 24
+            }
+          },
+          "replacement": "&&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_22.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_22.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 4.715214041,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.603472792,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:8: delete ! in read_pulses",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 8
+            },
+            "end": {
+              "line": 71,
+              "column": 9
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_8.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_8.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.1197975,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.601429042,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:71:51: replace != with == in read_pulses",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 71,
+              "column": 51
+            },
+            "end": {
+              "line": 71,
+              "column": 53
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_71_col_51.log",
+      "diff_path": "diff/src__machine__csw.rs_line_71_col_51.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.118947625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.650798291,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:85:39: replace + with - in read_pulses",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 85,
+              "column": 39
+            },
+            "end": {
+              "line": 85,
+              "column": 40
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/src__machine__csw.rs_line_85_col_39.log",
+      "diff_path": "diff/src__machine__csw.rs_line_85_col_39.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.161662125,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.54381525,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:85:39: replace + with * in read_pulses",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 85,
+              "column": 39
+            },
+            "end": {
+              "line": 85,
+              "column": 40
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_85_col_39_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_85_col_39_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.166770917,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.549107709,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:89:20: replace == with != in read_pulses",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "read_pulses",
+            "return_type": "-> Result<(u32, Vec<u32>), String>",
+            "span": {
+              "start": {
+                "line": 69,
+                "column": 1
+              },
+              "end": {
+                "line": 107,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 89,
+              "column": 20
+            },
+            "end": {
+              "line": 89,
+              "column": 22
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_89_col_20.log",
+      "diff_path": "diff/src__machine__csw.rs_line_89_col_20.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.096166041,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.596879,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:112:5: replace run_lengths -> Vec<u32> with vec![]",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 112,
+              "column": 5
+            },
+            "end": {
+              "line": 125,
+              "column": 11
+            }
+          },
+          "replacement": "vec![]",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_112_col_5.log",
+      "diff_path": "diff/src__machine__csw.rs_line_112_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.825011584,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.597105667,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:112:5: replace run_lengths -> Vec<u32> with vec![0]",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 112,
+              "column": 5
+            },
+            "end": {
+              "line": 125,
+              "column": 11
+            }
+          },
+          "replacement": "vec![0]",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_112_col_5_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_112_col_5_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.125971666,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.648282417,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:112:5: replace run_lengths -> Vec<u32> with vec![1]",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 112,
+              "column": 5
+            },
+            "end": {
+              "line": 125,
+              "column": 11
+            }
+          },
+          "replacement": "vec![1]",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_112_col_5_002.log",
+      "diff_path": "diff/src__machine__csw.rs_line_112_col_5_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.120455917,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.599543333,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:114:14: replace < with == in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 114,
+              "column": 14
+            },
+            "end": {
+              "line": 114,
+              "column": 15
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_114_col_14.log",
+      "diff_path": "diff/src__machine__csw.rs_line_114_col_14.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.920251083,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.594149375,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:114:14: replace < with > in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 114,
+              "column": 14
+            },
+            "end": {
+              "line": 114,
+              "column": 15
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_114_col_14_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_114_col_14_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.113253459,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.601518875,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:114:14: replace < with <= in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 114,
+              "column": 14
+            },
+            "end": {
+              "line": 114,
+              "column": 15
+            }
+          },
+          "replacement": "<=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_114_col_14_002.log",
+      "diff_path": "diff/src__machine__csw.rs_line_114_col_14_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.119908291,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.597969834,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:115:20: replace != with == in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 115,
+              "column": 20
+            },
+            "end": {
+              "line": 115,
+              "column": 22
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_115_col_20.log",
+      "diff_path": "diff/src__machine__csw.rs_line_115_col_20.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.066510041,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.659776375,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:117:16: replace += with -= in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 117,
+              "column": 16
+            },
+            "end": {
+              "line": 117,
+              "column": 18
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_117_col_16.log",
+      "diff_path": "diff/src__machine__csw.rs_line_117_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.296350708,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.70327725,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:117:16: replace += with *= in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 117,
+              "column": 16
+            },
+            "end": {
+              "line": 117,
+              "column": 18
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/src__machine__csw.rs_line_117_col_16_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_117_col_16_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.40841425,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 60.045472333,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:118:47: replace + with - in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 118,
+              "column": 47
+            },
+            "end": {
+              "line": 118,
+              "column": 48
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_118_col_47.log",
+      "diff_path": "diff/src__machine__csw.rs_line_118_col_47.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.840827375,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.815078667,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:118:47: replace + with * in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 118,
+              "column": 47
+            },
+            "end": {
+              "line": 118,
+              "column": 48
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_118_col_47_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_118_col_47_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.222822625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.54504175,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:118:55: replace + with - in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 118,
+              "column": 55
+            },
+            "end": {
+              "line": 118,
+              "column": 56
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_118_col_55.log",
+      "diff_path": "diff/src__machine__csw.rs_line_118_col_55.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.478621541,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.60288175,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:118:55: replace + with * in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 118,
+              "column": 55
+            },
+            "end": {
+              "line": 118,
+              "column": 56
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__machine__csw.rs_line_118_col_55_001.log",
+      "diff_path": "diff/src__machine__csw.rs_line_118_col_55_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.592307542,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.60265275,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/machine/csw.rs:120:16: replace += with -= in run_lengths",
+          "package": "atom-rs",
+          "file": "src/machine/csw.rs",
+          "function": {
+            "function_name": "run_lengths",
+            "return_type": "-> Vec<u32>",
+            "span": {
+              "start": {
+                "line": 109,
+                "column": 1
+              },
+              "end": {
+                "line": 126,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 120,
+              "column": 16
+            },
+            "end": {
+              "line": 120,
+              "column": 18
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Timeout",
+      "log_path": "log/src__machine__csw.rs_line_120_col_16.log",
+      "diff_path": "diff/src__machine__csw.rs_line_120_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.741172625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=atom-rs@0.1.3"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 60.022155583,
+          "process_status": "Timeout",
+          "argv": [
+            "/Users/malcolm/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=atom-rs@0.1.3",
+            "--lib"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 50,
+  "missed": 3,
+  "caught": 44,
+  "timeout": 2,
+  "unviable": 1,
+  "success": 0,
+  "start_time": "2026-11-28T16:28:46.792416Z",
+  "end_time": null,
+  "cargo_mutants_version": "27.1.0"
+}

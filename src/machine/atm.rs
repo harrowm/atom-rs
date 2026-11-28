@@ -73,4 +73,17 @@ mod tests {
         file[20] = 5; // claims 5 bytes of data, has none
         assert!(AtmFile::parse(&file).is_err());
     }
+
+    #[test]
+    fn a_header_with_no_data_is_a_valid_empty_program() {
+        let mut file = b"EMPTY".to_vec();
+        file.resize(22, 0);
+        let atm = AtmFile::parse(&file).unwrap();
+        assert!(atm.data.is_empty());
+        assert_eq!(atm.name, "EMPTY");
+        assert!(
+            AtmFile::parse(&file[..21]).is_err(),
+            "one byte short of a header"
+        );
+    }
 }

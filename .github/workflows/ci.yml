@@ -1,5 +1,7 @@
 # Runs on every push and pull request: formatting, lints, and the whole test
-# suite, including the 6502 CPU test suites and games from the software archive.
+# suite, including the 6502 CPU test suites and games from the software archive,
+# and a coverage check that no part of the program has less of its code tested
+# than before (see scripts/check_coverage.sh and coverage-floors.txt).
 name: CI
 
 on:
@@ -100,4 +102,74 @@ jobs:
             sleep $((attempt * 5))
           done
           echo "::warning::Could not update the test badge; it will catch up on the next run."
+          exit 1
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # to commit the coverage badge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: Install system libraries (sound) and cc65 (builds the decimal test)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev cc65
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      # The same test data as the Tests job, so the same tests run.
+      - name: Find the current SingleStepTests commit
+        id: singlestep
+        run: echo "sha=$(git ls-remote https://github.com/SingleStepTests/65x02 HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+      - name: Cache the SingleStepTests
+        uses: actions/cache@v6
+        with:
+          path: testdata/65x02
+          key: singlestep-${{ steps.singlestep.outputs.sha }}
+      - name: Get the CPU test suites
+        run: ./scripts/fetch_tests.sh
+      - name: Get the software archive and build the game disks the tests use
+        run: ./scripts/make_all_games.sh
+
+      - name: Run the tests, recording coverage
+        run: cargo llvm-cov --no-report --no-fail-fast
+
+      - name: Check each module against its floor
+        id: floors
+        run: ./scripts/check_coverage.sh | tee coverage.txt
+
+      - name: Summarise
+        if: always()
+        run: |
+          { echo "### Coverage"; echo; echo '```'; cat coverage.txt 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Like the test-count badge: only on master, only when it changed, and
+      # never able to turn a good build red.
+      - name: Update the coverage badge
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        run: |
+          total=$(awk '/^TOTAL/ { gsub("%", "", $2); printf "%d", $2 }' coverage.txt)
+          ./scripts/make_badge.sh "${total}%" coverage > badges/coverage.svg
+          if git diff --quiet badges/coverage.svg; then
+            echo "Badge already says ${total}%."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add badges/coverage.svg
+          git commit -m "Update coverage badge (${total}%) [skip ci]"
+          for attempt in 1 2 3; do
+            git pull --rebase origin master && git push && exit 0
+            echo "Push attempt $attempt failed; trying again shortly."
+            sleep $((attempt * 5))
+          done
+          echo "::warning::Could not update the coverage badge; it will catch up on the next run."
           exit 1

@@ -1,0 +1,21 @@
+--- src/machine/csw.rs
++++ replace * with + in decode
+@@ -54,17 +54,17 @@
+ }
+ 
+ /// Read a CSW file into a tape.
+ pub fn decode(file: &[u8]) -> Result<TapeImage, String> {
+     let (sample_rate, pulses) = read_pulses(file)?;
+     let microseconds = 1_000_000.0 / f64::from(sample_rate);
+     let times: Vec<f64> = pulses
+         .iter()
+-        .map(|&samples| f64::from(samples) * microseconds)
++        .map(|&samples| f64::from(samples) + /* ~ changed by cargo-mutants ~ */ microseconds)
+         .collect();
+     Ok(TapeImage {
+         chunks: chunks_from_pulses(&times),
+     })
+ }
+ 
+ /// The sample rate and the pulse lengths (in samples) in a file.
+ fn read_pulses(file: &[u8]) -> Result<(u32, Vec<u32>), String> {

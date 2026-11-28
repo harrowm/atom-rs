@@ -419,4 +419,52 @@ mod tests {
         let file = encode(&TapeImage::default(), RATE);
         assert!(decode(&file).unwrap().chunks.is_empty());
     }
+
+    // ---- Found by mutation testing -----------------------------------------------------------------
+
+    fn v2_header(rate: u32, compression: u8, extension: u8) -> Vec<u8> {
+        let mut file = SIGNATURE.to_vec();
+        file.push(TERMINATOR);
+        file.extend([2, 0]);
+        file.extend(rate.to_le_bytes());
+        file.resize(0x21, 0);
+        file.push(compression);
+        file.push(0);
+        file.push(extension);
+        file.resize(0x34, 0);
+        file
+    }
+
+    #[test]
+    fn a_file_with_the_signature_but_not_the_terminator_is_not_a_csw_file() {
+        let mut file = SIGNATURE.to_vec();
+        file.push(0x00); // should be 0x1A
+        file.resize(0x40, 0);
+        assert_eq!(decode(&file).unwrap_err(), "not a CSW file");
+        assert!(decode(SIGNATURE).is_err(), "nothing after the signature");
+    }
+
+    #[test]
+    fn a_version_2_header_extension_is_skipped_before_the_pulses() {
+        let mut file = v2_header(44_100, 1, 4);
+        file.extend([0xEE; 4]); // extension bytes: not pulses
+        file.extend([9, 9, 9]);
+        assert_eq!(read_pulses(&file).unwrap(), (44_100, vec![9, 9, 9]));
+        // With no extension the pulses start right after the header.
+        let mut file = v2_header(22_050, 1, 0);
+        file.extend([5, 6]);
+        assert_eq!(read_pulses(&file).unwrap(), (22_050, vec![5, 6]));
+    }
+
+    #[test]
+    fn long_pulses_are_a_zero_and_four_bytes_and_ordinary_pulses_follow_them() {
+        assert_eq!(run_lengths(&[5, 0, 2, 0, 0, 0, 6]), vec![5, 2, 6]);
+        assert_eq!(run_lengths(&[0, 0x10, 0x27, 0, 0, 1]), vec![10_000, 1]);
+        assert_eq!(
+            run_lengths(&[7, 0, 1, 2]),
+            vec![7],
+            "a cut-off long pulse is dropped"
+        );
+        assert_eq!(run_lengths(&[]), Vec::<u32>::new());
+    }
 }

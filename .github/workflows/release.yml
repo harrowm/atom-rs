@@ -64,6 +64,22 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      # Does what was built start at all? (Missing libraries, a wrong
+      # architecture or a crash before main show up here.) Only on platforms
+      # that can run what they built; no window is opened.
+      - name: Smoke test the program
+        if: matrix.test
+        run: |
+          exe="target/${{ matrix.target }}/release/atom-rs"
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          "$exe" --help | tee help.txt
+          grep -q "Usage: atom-rs" help.txt
+          # A mistake on the command line is refused with status 2, not a crash.
+          status=0
+          "$exe" --no-such-option 2> error.txt || status=$?
+          cat error.txt
+          [ "$status" = 2 ]
+
       - name: Package
         id: package
         run: |
