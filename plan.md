@@ -246,3 +246,26 @@ The debugger had about ten tests and none for the run/step/stop logic, which liv
 ### SID at two addresses
 The archive has two copies of its SID tunes with identical names: `ASA/SID/ATOMSID` (and `ATMSID1`-`19`) write only to `$BDC0-$BDDF` (379 absolute-address references, none at `9FC0`) and `ASA/SID/DAVESID` writes only to `$9FC0-$9FDF` (378, none at `BDC0`); its manual page `MANPAGES/BDC0.MAN` says "SID Registers Address: #BDC0-#BDDC or #9FC0-#9FDC". The DAVESID set was silent because nothing answered at 9FC0 (Atomulator maps only BDC0 too). `memory::SidAddress` (`Bdc0` default, `NineFc0`) is a hardware setting like `sid_fitted`: `region()` decodes the SID first, ahead of video RAM, so at 9FC0 it shadows 32 bytes at the top of the 8K video RAM space (never displayed), and BDC0 is then unmapped. Hardware > SID address, remembered in the settings; not part of a saved state (neither is `sid_fitted`). Tests: the memory map for both addresses and their neighbours, the bus reaching the card at the chosen address and only there, a write at 9FC0 not touching the video RAM beneath, and `tests/software.rs` plays the first tune of each folder at its own address and at the other (silent), which fails if the option is broken.
 
+## Test plan (from a coverage review, 28 Nov 2026)
+Measured with `cargo llvm-cov` over the whole suite, including SingleStepTests and Klaus Dormann (`cargo install cargo-llvm-cov`, then `cargo llvm-cov --lib --bins --tests`). About 75% of production lines run overall (an estimate: each file's own tests are subtracted from its line count). Mutation testing (`cargo install cargo-mutants`; use `--in-place`, since parallel jobs each build a full copy of the dependencies and fill the disk) gave 182 of 186 viable mutants caught on the debugger logic.
+
+| Area | Coverage now | What is not tested |
+|---|---|---|
+| CPU (`src/cpu`) | ~97% | Almost all `unreachable!()` arms and `Default` impls. One real gap: an NMI arriving during a BRK/IRQ entry hijacks the vector (`control.rs`); the SingleStepTests do not exercise interrupts. |
+| Debugger logic | ~98% | see the debugger section |
+| Chips: 6522 | 75% | DDRB, T1 high counter read, IER read, PB6 pulse counting (not emulated), shift register, port A without handshake |
+| Chips: 8271, 1770 | 87%, 94% | 8271 error paths (not ready, write protected, sector not found), read with deleted data, special commands that set a track |
+| Chips: 6847 | 87% | the 64 x 64 four-colour mode (`CLEAR 1`) is never drawn in a test; the PAL line count |
+| AtoMMC | 89% | error paths, random-access open, exec packet, image list, 8.3 name checks |
+| Tape | 84% | corrupt gzip/UEF, odd chunks, eject, recorded length |
+| Snapshot, settings | 84%, 56% | loading a corrupt or wrong-sized state or settings file |
+| `ui/app.rs` | 17% | nearly everything: keyboard mapping, the emulation timing loop, command-line options, file loading, screenshots, menu actions |
+| `ui/keyboard_window.rs`, `ui/debug/mod.rs`, `main.rs` | 0% | key capture and rebinding; opening the debug windows; start-up |
+| `archive.rs` | 38% | the download, update check and offline fallback (network) |
+
+Order of work:
+1. **Cheap and valuable.** An NMI-hijack test and some interrupt-timing tests (CLI/SEI delay, BRK versus IRQ, B flag) for the CPU. One golden-image test per video mode (including `CLEAR 1`). The remaining 6522 behaviours from the datasheet. AtoMMC command-by-command tests against a scratch folder, error paths included. 8271 error paths. Tape and snapshot corrupt-input tests.
+2. **Pull logic out of `ui/app.rs`**, as was done for `DebugSession`: key mapping, the cycle-debt timing loop, start options, file loading and screenshot naming become plain functions or a small struct tested without a window. Target 17% to about 60%. Put `archive.rs` behind a small fetch trait so a fake server can test the update, download and offline paths. Extract the key-capture logic from `keyboard_window.rs`.
+3. **Robustness.** Fuzz or property-test every parser that takes a user's file (UEF, CSW, SSD/DSD, ATM, the tape catalogue, the command box, conditions) so none can panic. Run `cargo-mutants --in-place` over the chips and parsers.
+4. **Keep it from slipping.** Run `cargo llvm-cov` in CI with a per-module floor that only goes up, and publish a coverage badge next to the test-count one. A start-up smoke test (`atom-rs --help`) on every release platform.
+
