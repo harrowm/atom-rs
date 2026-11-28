@@ -1,0 +1,20 @@
+# The least percentage of lines each part of the program must have covered by
+# the tests. Checked in CI by scripts/check_coverage.sh. A floor only goes up:
+# after adding tests, run `./scripts/check_coverage.sh --raise` and commit.
+src/cpu/                  97
+src/machine/via6522.rs    99
+src/machine/fdc8271.rs    97
+src/machine/fdc1770.rs    95
+src/machine/vdg6847.rs    99
+src/machine/video.rs      97
+src/machine/atommc.rs     97
+src/machine/tape.rs       97
+src/machine/csw.rs        97
+src/machine/snapshot.rs   97
+src/machine/debug         99
+src/machine/condition.rs  98
+src/ui/app.rs             58
+src/ui/logic.rs           97
+src/ui/keyboard_window.rs 86
+src/archive.rs            84
+src/                      91

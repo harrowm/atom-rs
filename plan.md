@@ -249,19 +249,21 @@ The archive has two copies of its SID tunes with identical names: `ASA/SID/ATOMS
 ## Test plan (from a coverage review, 28 Nov 2026)
 Measured with `cargo llvm-cov` over the whole suite, including SingleStepTests and Klaus Dormann (`cargo install cargo-llvm-cov`, then `cargo llvm-cov --lib --bins --tests`). About 75% of production lines run overall (an estimate: each file's own tests are subtracted from its line count). Mutation testing (`cargo install cargo-mutants`; use `--in-place`, since parallel jobs each build a full copy of the dependencies and fill the disk) gave 182 of 186 viable mutants caught on the debugger logic.
 
-| Area | Coverage now | What is not tested |
+**Status (29 Nov 2026): all four phases done.** The table below was the starting point; coverage is now 92% of lines overall (the per-file figures include each file's own test code, so production-only coverage is lower; use them as a trend, not an absolute).
+
+| Area | Before | Now |
 |---|---|---|
-| CPU (`src/cpu`) | ~97% | Almost all `unreachable!()` arms and `Default` impls. One real gap: an NMI arriving during a BRK/IRQ entry hijacks the vector (`control.rs`); the SingleStepTests do not exercise interrupts. |
-| Debugger logic | ~98% | see the debugger section |
-| Chips: 6522 | 75% | DDRB, T1 high counter read, IER read, PB6 pulse counting (not emulated), shift register, port A without handshake |
-| Chips: 8271, 1770 | 87%, 94% | 8271 error paths (not ready, write protected, sector not found), read with deleted data, special commands that set a track |
-| Chips: 6847 | 87% | the 64 x 64 four-colour mode (`CLEAR 1`) is never drawn in a test; the PAL line count |
-| AtoMMC | 89% | error paths, random-access open, exec packet, image list, 8.3 name checks |
-| Tape | 84% | corrupt gzip/UEF, odd chunks, eject, recorded length |
-| Snapshot, settings | 84%, 56% | loading a corrupt or wrong-sized state or settings file |
-| `ui/app.rs` | 17% | nearly everything: keyboard mapping, the emulation timing loop, command-line options, file loading, screenshots, menu actions |
-| `ui/keyboard_window.rs`, `ui/debug/mod.rs`, `main.rs` | 0% | key capture and rebinding; opening the debug windows; start-up |
-| `archive.rs` | 38% | the download, update check and offline fallback (network) |
+| CPU | ~97% | 98%; NMI hijack and interrupt timing in `tests/interrupts.rs` |
+| 6522, 8271, 1770, 6847 | 75%, 87%, 94%, 87% | 100%, 99%, 97%, 100%; every graphics mode drawn pixel by pixel |
+| AtoMMC, tape, snapshot | 89%, 84%, 84% | 99%, 98%, 98% |
+| `ui/app.rs` | 17% | 59%; the rest is egui drawing code |
+| `ui/keyboard_window.rs`, `ui/debug/mod.rs` | 0% | 88%, covered |
+| `archive.rs` | 38% | 86%, using a fake server (`Source` trait) |
+| `main.rs` | 0% | checked by the `--help` smoke test on each release platform |
+
+What was done: (1) the cheap-and-valuable tests; (2) `ui/logic.rs` holds the timing loop, key mapping, `--run` text and sound decisions as plain functions, `archive.rs` has a `Source` trait, and the keyboard window's key capture is a plain function; (3) `tests/robustness.rs` feeds damaged files and noise to every parser (set `FUZZ_SCALE=200` for a much longer run; one at that scale found nothing) and mutation testing of `csw.rs` and `atm.rs` found four survivors, now fixed; (4) CI has a `coverage` job that checks `coverage-floors.txt` (`scripts/check_coverage.sh`, `--raise` to lift the floors) and commits `badges/coverage.svg`, and the release workflow runs `atom-rs --help` on each platform that can run what it built.
+
+Still to do: a full `cargo mutants --in-place -- --lib` over `via6522.rs` and `fdc8271.rs` (about 300 mutants, a few hours; it edits `src/` while it runs, so do it with nothing else in progress). Only 15 of the first batch had finished when it was stopped; none had survived.
 
 Order of work:
 1. **Cheap and valuable.** An NMI-hijack test and some interrupt-timing tests (CLI/SEI delay, BRK versus IRQ, B flag) for the CPU. One golden-image test per video mode (including `CLEAR 1`). The remaining 6522 behaviours from the datasheet. AtoMMC command-by-command tests against a scratch folder, error paths included. 8271 error paths. Tape and snapshot corrupt-input tests.

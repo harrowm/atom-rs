@@ -1,2 +1,0 @@
-src/machine/csw.rs:117:16: replace += with *= in run_lengths
-src/machine/csw.rs:120:16: replace += with -= in run_lengths
