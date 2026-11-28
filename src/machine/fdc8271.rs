@@ -968,4 +968,60 @@ mod tests {
         assert_eq!(fdc.read(0), 0);
         assert_eq!(SECTORS, SECTORS_PER_TRACK);
     }
+
+    // ---- Found by mutation testing -----------------------------------------------------------------
+
+    /// Ticks from the end of a command's last parameter until the controller interrupts.
+    fn ticks_until_interrupt(fdc: &mut Fdc8271) -> u32 {
+        let mut ticks = 0;
+        while !fdc.nmi_asserted() {
+            fdc.tick();
+            ticks += 1;
+            assert!(ticks < 5_000_000, "never interrupted");
+        }
+        ticks
+    }
+
+    #[test]
+    fn a_seek_takes_a_fixed_start_time_plus_a_time_per_track_moved() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::SEEK, &[0]);
+        assert_eq!(ticks_until_interrupt(&mut fdc), COMMAND_START_CYCLES);
+        fdc.read(1);
+        command(&mut fdc, command::SEEK, &[4]);
+        assert_eq!(
+            ticks_until_interrupt(&mut fdc),
+            COMMAND_START_CYCLES + 4 * SEEK_CYCLES_PER_TRACK
+        );
+        fdc.read(1);
+        command(&mut fdc, command::SEEK, &[1]); // 3 tracks back
+        assert_eq!(
+            ticks_until_interrupt(&mut fdc),
+            COMMAND_START_CYCLES + 3 * SEEK_CYCLES_PER_TRACK
+        );
+    }
+
+    #[test]
+    fn drive_status_has_exactly_the_bits_the_data_sheet_gives() {
+        let mut fdc = fdc_with_disk();
+        fdc.drives[1] = Some(DiskImage::blank_80_track(1));
+        fdc.write(0, command::READ_DRIVE_STATUS | 0x40); // select drive 0 only
+        assert_eq!(fdc.read(1), 0x80 | 0x08 | 0x02 | 0x04);
+        fdc.write(0, command::READ_DRIVE_STATUS | 0x80); // drive 1 only
+        assert_eq!(fdc.read(1), 0x80 | 0x08 | 0x02 | 0x40);
+        write_special(&mut fdc, special::DRIVE1_TRACK, 5); // bit 7 chooses drive 1 for the track bit
+        fdc.write(0, command::READ_DRIVE_STATUS | 0xC0); // both
+        assert_eq!(fdc.read(1), 0x80 | 0x08 | 0x04 | 0x40, "not at track 0 now");
+    }
+
+    #[test]
+    fn writing_the_mode_register_is_accepted_and_ends_with_no_result() {
+        let mut fdc = fdc_with_disk();
+        write_special(&mut fdc, special::MODE, 0xC1);
+        assert_eq!(
+            fdc.status_byte(),
+            0,
+            "finished at once, no interrupt, no error"
+        );
+    }
 }

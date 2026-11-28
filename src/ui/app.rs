@@ -282,6 +282,11 @@ impl AtomApp {
     }
 
     fn start_audio(&mut self) {
+        // The tests build whole apps; they must not grab (or complain about the
+        // lack of) a sound card.
+        if cfg!(test) {
+            return;
+        }
         match AudioOutput::new() {
             Ok(audio) => {
                 self.atom.bus.set_audio_sample_rate(audio.sample_rate());

@@ -680,4 +680,57 @@ mod tests {
         assert_eq!(via.snapshot().timer2, 5);
         assert_eq!(via.flags & irq::TIMER2, 0);
     }
+
+    // ---- Found by mutation testing -----------------------------------------------------------------
+
+    #[test]
+    fn a_one_shot_counter_wraps_round_instead_of_reloading_from_the_latch() {
+        let mut via = Via::new();
+        via.write(T1C_L, 5);
+        via.write(T1C_H, 0);
+        for cycles_run in 1..=40 {
+            via.tick();
+            if cycles_run > 6 {
+                // Past zero it has wrapped round to 0xFFxx; it never goes back to
+                // the latch's 5 (which a free-running timer would).
+                assert_eq!(via.read(T1C_H), 0xFF, "after {cycles_run} cycles");
+            }
+        }
+    }
+
+    #[test]
+    fn starting_a_timer_does_not_touch_pb7_unless_pb7_output_is_on() {
+        let mut via = Via::new();
+        via.write(T1C_L, 5);
+        via.write(T1C_H, 0); // starts the timer with PB7 output off
+        via.write(ACR, 0x80); // now switch PB7 output on
+        assert_eq!(via.read(ORB) & 0x80, 0x80, "PB7 was left high");
+    }
+
+    #[test]
+    fn the_two_halves_of_the_timer_1_latch_and_timer_2_counter_go_to_the_right_bytes() {
+        let mut via = Via::new();
+        via.write(6, 0x34);
+        via.write(7, 0x12);
+        assert_eq!(via.t1_latch, 0x1234, "the high write keeps the low byte");
+        via.write(0x8, 0x78);
+        via.write(0x9, 0x56);
+        assert_eq!(via.t2_counter, 0x5678);
+    }
+
+    #[test]
+    fn port_a_reads_output_bits_from_the_register_and_input_bits_from_the_pins() {
+        let mut via = Via::new();
+        via.write(3, 0x0F); // low nibble output
+        via.write(1, 0x05);
+        via.input_a = 0xA0;
+        assert_eq!(via.read(1), 0xA5);
+        via.input_a = 0x00;
+        assert_eq!(via.read(1), 0x05, "pins that read 0 stay 0");
+        assert_eq!(
+            via.read(0xF),
+            0x05,
+            "the no-handshake address reads the same"
+        );
+    }
 }
