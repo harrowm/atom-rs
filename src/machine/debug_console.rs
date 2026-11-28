@@ -1172,4 +1172,53 @@ mod tests {
         let columns: Vec<usize> = history.lines().map(|l| l.find("A=").unwrap()).collect();
         assert!(columns.windows(2).all(|w| w[0] == w[1]), "{history}");
     }
+
+    #[test]
+    fn set_reaches_every_flag_the_command_names() {
+        let mut m = machine();
+        for (letter, mask) in [
+            ("n", flags::NEGATIVE),
+            ("v", flags::OVERFLOW),
+            ("d", flags::DECIMAL),
+            ("i", flags::IRQ_DISABLE),
+            ("z", flags::ZERO),
+            ("c", flags::CARRY),
+        ] {
+            m.0.cpu.regs.p = 0;
+            cmd!(m, &format!("set {letter} 1"));
+            assert_eq!(
+                m.0.cpu.regs.p, mask,
+                "set {letter} 1 sets only its own flag"
+            );
+            cmd!(m, &format!("set {letter} 0"));
+            assert_eq!(m.0.cpu.regs.p, 0, "set {letter} 0 clears it");
+        }
+    }
+
+    #[test]
+    fn bad_addresses_to_d_and_bclear_are_explained() {
+        let mut m = machine();
+        assert!(cmd!(m, "d zz").contains("not a hex number"));
+        assert!(cmd!(m, "bclear zz").contains("not a hex number"));
+        assert_eq!(cmd!(m, "bclear"), "Usage: bclear ADDR");
+    }
+
+    #[test]
+    fn logged_accesses_are_described_for_reads_and_for_writes_with_and_without_a_byte() {
+        let hit = |write, value| TraceHit {
+            addr: 0x0200,
+            write,
+            value,
+            cycle: 7,
+        };
+        assert_eq!(
+            describe_trace(&hit(true, Some(0x2A))),
+            "Write 2A to 0200  (cycle 7)"
+        );
+        assert_eq!(describe_trace(&hit(true, None)), "Write to 0200  (cycle 7)");
+        assert_eq!(
+            describe_trace(&hit(false, None)),
+            "Read from 0200  (cycle 7)"
+        );
+    }
 }

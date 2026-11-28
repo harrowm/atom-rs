@@ -701,4 +701,22 @@ mod tests {
             .unwrap();
         assert!(oldest.cycle >= 500 * 3, "the first 500 were forgotten");
     }
+
+    #[test]
+    fn a_frame_is_the_length_of_the_video_chips_frame() {
+        let atom = Atom::new();
+        assert_eq!(CYCLES_PER_FRAME, 16_768, "64 cycles a line, 262 lines");
+        assert_eq!(
+            CYCLES_PER_FRAME,
+            u64::from(CYCLES_PER_LINE) * u64::from(atom.bus.vdg.lines_per_frame())
+        );
+    }
+
+    #[test]
+    fn the_frame_step_really_advances_the_video_by_one_frame() {
+        let (mut atom, mut session) = at_rest();
+        let before = atom.bus.vdg.frames;
+        session.execute(&mut atom, Command::StepFrame);
+        assert_eq!(atom.bus.vdg.frames - before, 1);
+    }
 }

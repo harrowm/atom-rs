@@ -596,4 +596,31 @@ mod tests {
             "no breakpoint here"
         );
     }
+
+    #[test]
+    fn a_finished_step_out_does_not_hide_a_watchpoint_that_stopped_the_same_step() {
+        let mut debugger = Debugger::default();
+        debugger.start_step_out();
+        debugger.stop = Some(StopReason::Watchpoint {
+            addr: 0x10,
+            write: true,
+        });
+        debugger.note_step_for_step_out(RTS, false, 0x2903);
+        assert_eq!(
+            debugger.stop,
+            Some(StopReason::Watchpoint {
+                addr: 0x10,
+                write: true
+            }),
+            "the earlier reason is kept"
+        );
+        assert_eq!(debugger.step_out, None, "but the step out is over");
+    }
+
+    #[test]
+    fn marking_an_interrupt_with_no_history_is_harmless() {
+        let mut debugger = Debugger::default();
+        debugger.mark_last_as_interrupt();
+        assert_eq!(debugger.history_len(), 0);
+    }
 }

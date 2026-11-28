@@ -99,4 +99,11 @@ mod tests {
         assert_eq!(disassemble_bytes(0x1000, &[0xD0, 0xFC]).text, "BNE $0FFE");
         assert_eq!(disassemble_bytes(0x1000, &[0xF0, 0x10]).text, "BEQ $1012");
     }
+
+    #[test]
+    fn zero_page_indexed_by_y_is_shown_with_its_register() {
+        // LDX $10,Y and STX $20,Y are the 6502's only zero-page,Y forms.
+        assert_eq!(disassemble_bytes(0x2900, &[0xB6, 0x10]).text, "LDX $10,Y");
+        assert_eq!(disassemble_bytes(0x2900, &[0x96, 0x20]).text, "STX $20,Y");
+    }
 }
