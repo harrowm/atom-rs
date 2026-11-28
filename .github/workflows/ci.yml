@@ -59,6 +59,8 @@ jobs:
 
       - name: Get the CPU test suites
         run: ./scripts/fetch_tests.sh
+      - name: Get the die photograph the character font is checked against
+        run: ./scripts/fetch_font_source.sh
       - name: Get the software archive and build the game disks the tests use
         run: ./scripts/make_all_games.sh
 

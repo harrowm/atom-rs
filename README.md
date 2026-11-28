@@ -704,21 +704,30 @@ Dependencies point one way: `ui` uses `machine`, which uses `cpu`.
 
 ## Credits
 
-The memory map, character font and video behaviour follow Tom Walker's
-Atomulator. CPU tests are by Tom Harte and others (SingleStepTests), Klaus
+The memory map, peripheral behaviour and video behaviour follow Tom Walker's
+Atomulator. The character font is read from a die photograph of the 6847's ROM
+by Robcfg (see the licence section). CPU tests are by Tom Harte and others (SingleStepTests), Klaus
 Dormann, and Bruce Clark. The SID chip is the `sidera` crate (MIT).
 
 ## Licence
 
 Licensed under the **GNU General Public License, version 2 only** (see
-[`LICENSE`](LICENSE)). This follows from Atomulator: the character font in
-`src/machine/font.rs` is copied from it, and the memory map, peripheral
-behaviour and key layout were worked out from reading its source. Atomulator
-states "licensed under the GPL" and ships the version 2 text, with no
-"or later" grant, so this project does the same.
+[`LICENSE`](LICENSE)). This follows from Atomulator, which states "licensed
+under the GPL" and ships the version 2 text with no "or later" grant. Some of
+this code was adapted from Atomulator (the WD1770 disk controller in
+`src/machine/fdc1770.rs`, the keyboard matrix table) and more was written
+after reading its source (the AtoMMC and RAM/ROM board behaviour, the memory
+map), so the project stays GPL until those are redone from independent
+sources. The character font was a copy of Atomulator's table; it is now read
+from a photograph of the ROM itself (see below), which gives the same table.
 
 The test suites downloaded by `scripts/fetch_tests.sh` are not part of this
-repository and keep their own licences.
+repository and keep their own licences. Nor is the die photograph of the 6847's
+character ROM (CC BY-SA 4.0, by Robcfg on Wikimedia Commons) that
+`scripts/fetch_font_source.sh` downloads: the character font in
+`src/machine/font.rs` is read from it by a program and checked against it by a
+test. The font used to be a copy of Atomulator's table; the two are identical,
+as they describe the same ROM.
 
 ### The ROMs
 

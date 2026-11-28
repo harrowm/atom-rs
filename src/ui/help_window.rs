@@ -189,15 +189,15 @@ fn key_table() -> &'static [(&'static str, &'static str)] {
 }
 
 fn licence_text() -> &'static str {
-    "GNU General Public License, version 2 only. This follows from Atomulator, whose character font \
-     is used here and whose memory map and behaviour this emulator was worked out from."
+    "GNU General Public License, version 2 only. This follows from Atomulator, some of whose code \
+     was adapted here and whose behaviour much of this emulator was worked out from."
 }
 
 fn credits() -> &'static [(&'static str, &'static str)] {
     &[
         (
             "Atomulator",
-            "by Tom Walker and others, the reference for the memory map, the character font, the video, the AtoMMC and the add-on boards.",
+            "by Tom Walker and others, the reference for the memory map, the video, the AtoMMC and the add-on boards.",
         ),
         (
             "Tom Harte and others",
