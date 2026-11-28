@@ -701,11 +701,15 @@ Dormann, and Bruce Clark. The SID chip is the `sidera` crate (MIT).
 ## Licence
 
 Licensed under the **GNU General Public License, version 2 only** (see
-[`LICENSE`](LICENSE)). This follows from Atomulator: the character font in
-`src/machine/font.rs` is copied from it, and the memory map, peripheral
-behaviour and key layout were worked out from reading its source. Atomulator
-states "licensed under the GPL" and ships the version 2 text, with no
-"or later" grant, so this project does the same.
+[`LICENSE`](LICENSE)). This follows from Atomulator, which states "licensed
+under the GPL" and ships the version 2 text with no "or later" grant. Some of
+this code was adapted from Atomulator (the WD1770 disk controller in
+`src/machine/fdc1770.rs`, the keyboard matrix table) and more was written
+after reading its source (the AtoMMC and RAM/ROM board behaviour, the memory
+map), so the project stays GPL until those are redone from independent
+sources. The character font used to be a copy of Atomulator's table; it is now
+made from published material and a screenshot of a real Atom, and
+`src/machine/font.rs` says where each part comes from.
 
 The test suites downloaded by `scripts/fetch_tests.sh` are not part of this
 repository and keep their own licences.
