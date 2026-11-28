@@ -22,3 +22,18 @@ punctuation, digits) and the bottom row is codes `$00`-`$1F` (`@`, `A`-`Z`,
 `cargo run --example make_font`, and a test checks the two still agree. Where
 the 5 x 7 pattern sits in the 8 x 12 character cell is taken from the MC6847
 data sheet, not from the image.
+
+## Corrections to the specimen (`src/machine/font.rs`, `CORRECTIONS`)
+
+The specimen is not exactly the Atom's ROM. Where real Atoms disagree with it,
+`font.rs` corrects it, and says why:
+
+* **`E`, middle bar:** measured on a screenshot of a real Atom and checked on a
+  phone video of another (no part of either is included here).
+* **`G` and `W`:** the shapes come from `src/MC6847/CharRom.vhd` in
+  <https://github.com/hoglet67/AtomGodilVideo> (Apache-2.0), because they agree
+  with the same video where the specimen does not. That file states no author or
+  origin for its data, so it is not known whether it was made independently.
+
+Still unverified against a real Atom: `F` (which may have the same four-dot
+middle bar as `E`) and the digit `3`.

@@ -24,7 +24,9 @@
 //! * **The order of the characters** is the data sheet's Figure 20.
 //!
 //! * **Corrections** where a real Atom's screen contradicts the specimen are
-//!   listed in [`CORRECTIONS`], each with the evidence. There is one so far.
+//!   listed in [`CORRECTIONS`], each with the evidence: the middle bar of `E`
+//!   (measured), and the shapes of `G` and `W` (chosen between published
+//!   patterns by looking at real Atoms).
 //!
 //! The table below was produced by that program (the image, then those
 //! corrections) and not edited by hand, and a test checks that the table and
@@ -32,18 +34,20 @@
 //!
 //! # What is not yet checked against a real Atom
 //!
-//! The specimen is not quite the Atom's ROM (the one letter that could be
-//! measured, `E`, differs), so other letters may differ by a dot too. The
-//! patterns that have been compared with real hardware are the ones in the
-//! test `the_glyphs_match_what_a_real_atom_shows` (the letters `ACORNTMEPHISL`,
-//! the digits `9410`, the quote and `>`). **`F`, `G` and `W` are known to
-//! differ between published fonts and have not been verified**, and the rest of
-//! the set (punctuation and the arrows) only matches the specimen. A sharp
-//! screenshot of a real Atom showing them would settle it.
+//! The specimen is not quite the Atom's ROM (published 6847 fonts differ from
+//! each other in a few letters), so other glyphs may differ by a dot too. Those
+//! compared with real hardware are in the tests
+//! `the_glyphs_match_what_a_real_atom_shows` and
+//! `g_and_w_match_the_video_of_a_real_atom`. **`F` has not been verified**: the
+//! specimen and AtomGodilVideo both give its middle bar three dots, as they did
+//! for `E`, which a real Atom shows with four, so `F` may be wrong in the same
+//! way. The digit `3` also differs between published fonts. Neither could be
+//! measured from the screenshots found. A sharp screenshot of a real Atom
+//! showing an `F` would settle it.
 //!
-//! Nothing here was copied from another emulator. An earlier version of this
-//! file was a copy of Atomulator's table (GPL-licensed) and was replaced so that
-//! this project does not have to be GPL-licensed on its account.
+//! Nothing here was copied from Atomulator. An earlier version of this file
+//! was a copy of Atomulator's table (GPL-licensed) and was replaced so that this
+//! project does not have to be GPL-licensed on its account.
 
 pub const GLYPH_HEIGHT: usize = 12;
 
@@ -72,13 +76,34 @@ const BOTTOM_BAND_FIRST_DOT_ROW: usize = 11;
 /// Where the specimen disagrees with a real Acorn Atom: `(character code,
 /// scanline, the byte that scanline should be)`.
 ///
-/// * `E` (`$05`) scanline 6, the middle bar, is `$3C` (four dots, `..####..`).
-///   The specimen has three dots. Measured on a screenshot of a real Atom
-///   (the "ERROR 94" line of the video "Acorn Atom [BASIC test] (1979)" on
-///   YouTube, each Atom pixel being about 4.8 screen pixels): the middle bar
-///   is 20 screen pixels long where the top bar is 24 and a three-dot bar
-///   would be about 14.
-pub const CORRECTIONS: [(usize, usize, u8); 1] = [(0x05, 6, 0x3C)];
+/// * **`E` (`$05`), scanline 6, the middle bar: `$3C`** (four dots,
+///   `..####..`; the specimen has three). *Measured* on a screenshot of a real
+///   Atom (the "ERROR 94" line of the video "Acorn Atom [BASIC test] (1979)" on
+///   YouTube, each Atom pixel being about 4.8 screen pixels): the middle bar is
+///   20 screen pixels long where the top bar is 24 and a three-dot bar would
+///   be about 14. A phone video of another real Atom (`LOAD"EARLY WARNING"`)
+///   agrees: the middle bar is about one dot shorter than the top and bottom.
+/// * **`G` (`$07`): a flat top** (scanline 3 `$1E`, 4 `$20`, 6 `$26`, 7 `$22`)
+///   where the specimen has a round one. In the same phone video the top bar of
+///   the `G` is square-ended and the right side of the row below it is dark;
+///   the specimen's `G` would have a lit dot there.
+/// * **`W` (`$17`), scanline 6: `$2A`**, so the middle stroke starts a row
+///   higher than the specimen's. In the video the centre stroke of the `W`
+///   rises to about the fourth row.
+///
+/// For `G` and `W` the video is too blurry to read single dots, so the exact
+/// bytes are those in `src/MC6847/CharRom.vhd` of
+/// <https://github.com/hoglet67/AtomGodilVideo> (Apache-2.0), the character ROM
+/// of a replacement video board for the Atom, picked because they agree with
+/// the video where the specimen does not.
+pub const CORRECTIONS: [(usize, usize, u8); 6] = [
+    (0x05, 6, 0x3C),
+    (0x07, 3, 0x1E),
+    (0x07, 4, 0x20),
+    (0x07, 6, 0x26),
+    (0x07, 7, 0x22),
+    (0x17, 6, 0x2A),
+];
 
 /// The specimen's glyphs with [`CORRECTIONS`] applied: what [`FONT`] is.
 pub fn glyphs_for_the_atom(png_file: &[u8]) -> Result<Vec<u8>, String> {
@@ -179,7 +204,7 @@ pub const FONT: [u8; 64 * GLYPH_HEIGHT] = [
     0x00, 0x00, 0x00, 0x3c, 0x12, 0x12, 0x12, 0x12, 0x12, 0x3c, 0x00, 0x00, // $04 D
     0x00, 0x00, 0x00, 0x3e, 0x20, 0x20, 0x3c, 0x20, 0x20, 0x3e, 0x00, 0x00, // $05 E
     0x00, 0x00, 0x00, 0x3e, 0x20, 0x20, 0x38, 0x20, 0x20, 0x20, 0x00, 0x00, // $06 F
-    0x00, 0x00, 0x00, 0x1c, 0x22, 0x20, 0x20, 0x26, 0x22, 0x1e, 0x00, 0x00, // $07 G
+    0x00, 0x00, 0x00, 0x1e, 0x20, 0x20, 0x26, 0x22, 0x22, 0x1e, 0x00, 0x00, // $07 G
     0x00, 0x00, 0x00, 0x22, 0x22, 0x22, 0x3e, 0x22, 0x22, 0x22, 0x00, 0x00, // $08 H
     0x00, 0x00, 0x00, 0x1c, 0x08, 0x08, 0x08, 0x08, 0x08, 0x1c, 0x00, 0x00, // $09 I
     0x00, 0x00, 0x00, 0x02, 0x02, 0x02, 0x02, 0x22, 0x22, 0x1c, 0x00, 0x00, // $0A J
@@ -195,7 +220,7 @@ pub const FONT: [u8; 64 * GLYPH_HEIGHT] = [
     0x00, 0x00, 0x00, 0x3e, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00, 0x00, // $14 T
     0x00, 0x00, 0x00, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x1c, 0x00, 0x00, // $15 U
     0x00, 0x00, 0x00, 0x22, 0x22, 0x22, 0x14, 0x14, 0x08, 0x08, 0x00, 0x00, // $16 V
-    0x00, 0x00, 0x00, 0x22, 0x22, 0x22, 0x22, 0x2a, 0x36, 0x22, 0x00, 0x00, // $17 W
+    0x00, 0x00, 0x00, 0x22, 0x22, 0x22, 0x2a, 0x2a, 0x36, 0x22, 0x00, 0x00, // $17 W
     0x00, 0x00, 0x00, 0x22, 0x22, 0x14, 0x08, 0x14, 0x22, 0x22, 0x00, 0x00, // $18 X
     0x00, 0x00, 0x00, 0x22, 0x22, 0x14, 0x08, 0x08, 0x08, 0x08, 0x00, 0x00, // $19 Y
     0x00, 0x00, 0x00, 0x3e, 0x02, 0x04, 0x08, 0x10, 0x20, 0x3e, 0x00, 0x00, // $1A Z
@@ -295,6 +320,27 @@ mod tests {
             .collect();
         let corrected: Vec<(usize, usize)> = CORRECTIONS.iter().map(|&(c, s, _)| (c, s)).collect();
         assert_eq!(differing, corrected);
+    }
+
+    /// What a phone video of a real Atom showed of `G` and `W` (see
+    /// [`CORRECTIONS`]), as features that a blurry picture can still tell apart.
+    #[test]
+    fn g_and_w_match_the_video_of_a_real_atom() {
+        let g = picture(code_of('G'));
+        // A flat top: the top bar is four dots, starting one dot in from the
+        // left stem, and the row under it is the stem alone, open at the right.
+        assert_eq!(g[3], "...####.");
+        assert_eq!(g[4], "..#.....");
+        // The specimen's round-topped G would be "...###.." and "..#...#.".
+        let w = picture(code_of('W'));
+        // The centre stroke of the W is already there on the fourth row.
+        assert_eq!(w[3 + 3], "..#.#.#.");
+        // ...and not on the third.
+        assert_eq!(w[3 + 2], "..#...#.");
+        // The E that the same video showed: the middle bar one dot shorter than the top.
+        let e = picture(code_of('E'));
+        assert_eq!(e[3], "..#####.");
+        assert_eq!(e[6], "..####..");
     }
 
     // ---- Checks that do not depend on the image ---------------------------------------
