@@ -25,25 +25,31 @@
 //!
 //! * **Corrections** where a real Atom's screen contradicts the specimen are
 //!   listed in [`CORRECTIONS`], each with the evidence: the middle bar of `E`
-//!   (measured), and the shapes of `G` and `W` (chosen between published
-//!   patterns by looking at real Atoms).
+//!   (measured), the shapes of `G` and `W` (chosen between published patterns
+//!   by looking at real Atoms) and the middle bar of `F`.
 //!
 //! The table below was produced by that program (the image, then those
 //! corrections) and not edited by hand, and a test checks that the table and
 //! the image still agree.
 //!
-//! # What is not yet checked against a real Atom
+//! # How it was checked
 //!
-//! The specimen is not quite the Atom's ROM (published 6847 fonts differ from
-//! each other in a few letters), so other glyphs may differ by a dot too. Those
-//! compared with real hardware are in the tests
-//! `the_glyphs_match_what_a_real_atom_shows` and
-//! `g_and_w_match_the_video_of_a_real_atom`. **`F` has not been verified**: the
-//! specimen and AtomGodilVideo both give its middle bar three dots, as they did
-//! for `E`, which a real Atom shows with four, so `F` may be wrong in the same
-//! way. The digit `3` also differs between published fonts. Neither could be
-//! measured from the screenshots found. A sharp screenshot of a real Atom
-//! showing an `F` would settle it.
+//! The specimen is not quite the Atom's ROM (published 6847 fonts differ in a
+//! few letters), so it was compared with real hardware and with a second
+//! published rendering:
+//!
+//! * the tests `the_glyphs_match_what_a_real_atom_shows` and
+//!   `g_and_w_match_the_video_of_a_real_atom` pin the glyphs that were compared
+//!   with screenshots and video of real Atoms (`E`, `G` and `W` are corrected
+//!   because of them);
+//! * a screenshot of the standard MC6847 character set on Wikipedia
+//!   (`File:MC6847_Standard_Charset.png`, by Robcfg, CC BY-SA 4.0) was read
+//!   dot by dot **as a comparison only; none of it is included here**. After the
+//!   corrections below, all 64 glyphs agree with it. It is also where `F`'s
+//!   four-dot middle bar was confirmed.
+//!
+//! A glyph that looks wrong on screen (an `F`, a `3`, or any other) is worth
+//! reporting: it would mean the Atom's ROM differs from all of these.
 //!
 //! Nothing here was copied from Atomulator. An earlier version of this file
 //! was a copy of Atomulator's table (GPL-licensed) and was replaced so that this
@@ -91,13 +97,20 @@ const BOTTOM_BAND_FIRST_DOT_ROW: usize = 11;
 ///   higher than the specimen's. In the video the centre stroke of the `W`
 ///   rises to about the fourth row.
 ///
+/// * **`F` (`$06`), scanline 6, the middle bar: `$3C`**, four dots like the
+///   `E`'s (the specimen has three). No real-Atom image showing an `F` was
+///   found; this is from the Wikipedia standard-character-set screenshot
+///   mentioned at the top of this file, which agrees with the real Atom's `E`,
+///   `G` and `W` and shows `F` this way. (Compared against, not copied.)
+///
 /// For `G` and `W` the video is too blurry to read single dots, so the exact
 /// bytes are those in `src/MC6847/CharRom.vhd` of
 /// <https://github.com/hoglet67/AtomGodilVideo> (Apache-2.0), the character ROM
 /// of a replacement video board for the Atom, picked because they agree with
 /// the video where the specimen does not.
-pub const CORRECTIONS: [(usize, usize, u8); 6] = [
+pub const CORRECTIONS: [(usize, usize, u8); 7] = [
     (0x05, 6, 0x3C),
+    (0x06, 6, 0x3C),
     (0x07, 3, 0x1E),
     (0x07, 4, 0x20),
     (0x07, 6, 0x26),
@@ -203,7 +216,7 @@ pub const FONT: [u8; 64 * GLYPH_HEIGHT] = [
     0x00, 0x00, 0x00, 0x1c, 0x22, 0x20, 0x20, 0x20, 0x22, 0x1c, 0x00, 0x00, // $03 C
     0x00, 0x00, 0x00, 0x3c, 0x12, 0x12, 0x12, 0x12, 0x12, 0x3c, 0x00, 0x00, // $04 D
     0x00, 0x00, 0x00, 0x3e, 0x20, 0x20, 0x3c, 0x20, 0x20, 0x3e, 0x00, 0x00, // $05 E
-    0x00, 0x00, 0x00, 0x3e, 0x20, 0x20, 0x38, 0x20, 0x20, 0x20, 0x00, 0x00, // $06 F
+    0x00, 0x00, 0x00, 0x3e, 0x20, 0x20, 0x3c, 0x20, 0x20, 0x20, 0x00, 0x00, // $06 F
     0x00, 0x00, 0x00, 0x1e, 0x20, 0x20, 0x26, 0x22, 0x22, 0x1e, 0x00, 0x00, // $07 G
     0x00, 0x00, 0x00, 0x22, 0x22, 0x22, 0x3e, 0x22, 0x22, 0x22, 0x00, 0x00, // $08 H
     0x00, 0x00, 0x00, 0x1c, 0x08, 0x08, 0x08, 0x08, 0x08, 0x1c, 0x00, 0x00, // $09 I
@@ -337,6 +350,10 @@ mod tests {
         assert_eq!(w[3 + 3], "..#.#.#.");
         // ...and not on the third.
         assert_eq!(w[3 + 2], "..#...#.");
+        // F is E without its foot: the same top and middle bars.
+        let f = picture(code_of('F'));
+        assert_eq!(&f[3..9], &picture(code_of('E'))[3..9]);
+        assert_eq!(f[9], "..#.....");
         // The E that the same video showed: the middle bar one dot shorter than the top.
         let e = picture(code_of('E'));
         assert_eq!(e[3], "..#####.");

@@ -35,5 +35,7 @@ The specimen is not exactly the Atom's ROM. Where real Atoms disagree with it,
   with the same video where the specimen does not. That file states no author or
   origin for its data, so it is not known whether it was made independently.
 
-Still unverified against a real Atom: `F` (which may have the same four-dot
-middle bar as `E`) and the digit `3`.
+* **`F`, middle bar:** four dots like `E`. This is from the standard MC6847
+  character set on Wikipedia (`File:MC6847_Standard_Charset.png`, by Robcfg,
+  CC BY-SA 4.0), which was read dot by dot as a **comparison only** and is not
+  included here. After the corrections above, all 64 glyphs agree with it.
