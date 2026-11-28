@@ -1,1 +1,0 @@
-src/machine/atm.rs:24:9: replace AtmFile::parse -> Result<Self, String> with Ok(Default::default())
