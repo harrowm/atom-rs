@@ -82,10 +82,8 @@ impl KeyboardWindow {
         }
         ui.separator();
 
-        let filter = self.filter.trim().to_ascii_uppercase();
-        let matches = |target: &Target| {
-            filter.is_empty() || target.label().to_ascii_uppercase().contains(&filter)
-        };
+        let filter = self.filter.trim().to_string();
+        let matches = |target: &Target| matches_filter(target, &filter);
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
@@ -193,19 +191,168 @@ impl KeyboardWindow {
         });
         let Some(key) = pressed else { return false };
         self.capturing = None;
-        if key == Key::Escape {
-            self.message = "Cancelled".to_string();
-            return false;
+        let (message, changed) = apply_capture(map, key, &target);
+        self.message = message;
+        changed
+    }
+}
+
+/// A key was pressed while waiting to choose one for `target`: bind it (Esc
+/// cancels). Returns what to tell the user and whether the map changed.
+fn apply_capture(map: &mut KeyMap, key: Key, target: &Target) -> (String, bool) {
+    if key == Key::Escape {
+        return ("Cancelled".to_string(), false);
+    }
+    let message = match map.bind(key, target.clone()) {
+        Some(old) => format!(
+            "{} now presses {} (it used to press {})",
+            host_label(key.name()),
+            target.label(),
+            old.label()
+        ),
+        None => format!("{} now presses {}", host_label(key.name()), target.label()),
+    };
+    (message, true)
+}
+
+/// Does `target` show up when the Filter box holds `filter`?
+fn matches_filter(target: &Target, filter: &str) -> bool {
+    let filter = filter.trim().to_ascii_uppercase();
+    filter.is_empty() || target.label().to_ascii_uppercase().contains(&filter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key_target(name: &str) -> Target {
+        Target::Key {
+            name: name.to_string(),
+            shift: false,
         }
-        self.message = match map.bind(key, target.clone()) {
-            Some(old) => format!(
-                "{} now presses {} (it used to press {})",
-                host_label(key.name()),
-                target.label(),
-                old.label()
-            ),
-            None => format!("{} now presses {}", host_label(key.name()), target.label()),
+    }
+
+    #[test]
+    fn host_keys_are_shown_as_their_symbols_when_those_are_plain_text() {
+        assert_eq!(host_label("CloseBracket"), "]");
+        assert_eq!(host_label("A"), "A");
+        assert_eq!(
+            host_label("ArrowLeft"),
+            "ArrowLeft",
+            "non-ASCII symbols keep their names"
+        );
+        assert_eq!(host_label("NoSuchKey"), "NoSuchKey");
+    }
+
+    #[test]
+    fn a_pressed_key_is_bound_and_the_message_says_what_it_replaced() {
+        let mut map = KeyMap::default();
+        let (message, changed) = apply_capture(&mut map, Key::F1, &key_target("Z"));
+        assert!(changed);
+        assert!(message.contains("now presses Z"), "{message}");
+        assert!(!message.contains("used to"), "{message}");
+        assert_eq!(map.target_for(Key::F1), Some(&key_target("Z")));
+
+        let (message, changed) = apply_capture(&mut map, Key::F1, &key_target("X"));
+        assert!(changed);
+        assert!(
+            message.contains("now presses X (it used to press Z)"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn escape_cancels_and_changes_nothing() {
+        let mut map = KeyMap::default();
+        let (message, changed) = apply_capture(&mut map, Key::Escape, &key_target("Z"));
+        assert!(!changed);
+        assert_eq!(message, "Cancelled");
+        assert_eq!(
+            map.target_for(Key::Escape),
+            KeyMap::default().target_for(Key::Escape)
+        );
+    }
+
+    #[test]
+    fn the_filter_ignores_case_and_surrounding_spaces_and_blank_matches_everything() {
+        let target = key_target("LOCK");
+        assert!(matches_filter(&target, ""));
+        assert!(matches_filter(&target, "   "));
+        assert!(matches_filter(&target, "loc"));
+        assert!(matches_filter(&target, " OCK "));
+        assert!(!matches_filter(&target, "zzz"));
+    }
+
+    /// Run one frame of the window's contents with the given events.
+    fn frame(window: &mut KeyboardWindow, map: &mut KeyMap, events: Vec<Event>) -> bool {
+        let ctx = egui::Context::default();
+        let mut changed = false;
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
         };
-        true
+        let mut output = ctx.run_ui(input, |ui| {
+            changed |= window.contents(ui, map); // egui may run a frame twice
+        });
+        output.textures_delta.clear();
+        changed
+    }
+
+    fn key_event(key: Key) -> Event {
+        Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn the_window_draws_and_waiting_for_a_key_takes_the_next_one_pressed() {
+        let mut window = KeyboardWindow::default();
+        let mut map = KeyMap::default();
+        assert!(
+            !frame(&mut window, &mut map, vec![]),
+            "drawing alone changes nothing"
+        );
+
+        window.capturing = Some(key_target("Z"));
+        assert!(!frame(&mut window, &mut map, vec![]), "still waiting");
+        assert!(window.capturing.is_some());
+        assert!(frame(&mut window, &mut map, vec![key_event(Key::F2)]));
+        assert!(window.capturing.is_none());
+        assert_eq!(map.target_for(Key::F2), Some(&key_target("Z")));
+        assert!(window.message.contains("now presses Z"));
+    }
+
+    #[test]
+    fn escape_while_waiting_stops_waiting() {
+        let mut window = KeyboardWindow::default();
+        let mut map = KeyMap::default();
+        window.capturing = Some(key_target("Z"));
+        assert!(!frame(&mut window, &mut map, vec![key_event(Key::Escape)]));
+        assert!(window.capturing.is_none());
+        assert_eq!(window.message, "Cancelled");
+    }
+
+    #[test]
+    fn the_filter_box_narrows_what_is_listed_and_still_draws() {
+        let mut window = KeyboardWindow {
+            filter: "lock".into(),
+            ..Default::default()
+        };
+        let mut map = KeyMap::default();
+        assert!(!frame(&mut window, &mut map, vec![]));
+        window.filter = "nothing-matches-this".into();
+        assert!(!frame(&mut window, &mut map, vec![]));
+    }
+
+    #[test]
+    fn a_closed_window_does_nothing() {
+        let mut window = KeyboardWindow::default();
+        let mut map = KeyMap::default();
+        let ctx = egui::Context::default();
+        assert!(!window.show(&ctx, &mut map));
     }
 }

@@ -45,11 +45,40 @@ pub fn cache_folder() -> Result<PathBuf, String> {
 /// Make sure the latest archive is unpacked in `cache` and return the folder
 /// to use as the SD card. `say` is told what is happening, for the user.
 pub fn prepare(cache: &Path, say: &mut impl FnMut(&str)) -> Result<PathBuf, String> {
+    prepare_from(&GitHub, cache, say)
+}
+
+/// Where releases and downloads come from; GitHub in real use, a fake in tests.
+pub trait Source {
+    /// The newest release.
+    fn latest_release(&self) -> Result<Release, String>;
+    /// The bytes at `url`.
+    fn download(&self, url: &str) -> Result<Vec<u8>, String>;
+}
+
+/// The real thing: GitHub over HTTPS.
+struct GitHub;
+
+impl Source for GitHub {
+    fn latest_release(&self) -> Result<Release, String> {
+        latest_release()
+    }
+
+    fn download(&self, url: &str) -> Result<Vec<u8>, String> {
+        download(url)
+    }
+}
+
+fn prepare_from(
+    source: &impl Source,
+    cache: &Path,
+    say: &mut impl FnMut(&str),
+) -> Result<PathBuf, String> {
     let card = cache.join(FILES_FOLDER);
     let have = installed_version(cache).filter(|_| card.join("MENU").exists());
 
     say("Checking for the latest Atom Software Archive...");
-    let latest = match latest_release() {
+    let latest = match source.latest_release() {
         Ok(release) => release,
         Err(problem) => {
             return match have {
@@ -76,7 +105,7 @@ pub fn prepare(cache: &Path, say: &mut impl FnMut(&str)) -> Result<PathBuf, Stri
         )),
         None => say(&format!("Downloading archive {}...", latest.tag)),
     }
-    let zip = download(&latest.download_url)?;
+    let zip = source.download(&latest.download_url)?;
     say(&format!("Unpacking {} MB...", zip.len() / 1_000_000));
     install(cache, &latest.tag, &zip)?;
     say("Archive ready.");
@@ -333,5 +362,177 @@ mod tests {
         install(&cache.0, "V1", &zip).unwrap();
         assert!(!cache.0.join("escaped").exists());
         assert!(cache.0.join("files/MENU").exists());
+    }
+
+    // ---- The whole update, against a fake server ------------------------------------------------
+
+    use std::cell::RefCell;
+
+    /// A pretend GitHub: a release (or an error) and the zip bytes (or an error).
+    struct Fake {
+        release: Result<Release, String>,
+        zip: Result<Vec<u8>, String>,
+        downloads: RefCell<usize>,
+    }
+
+    impl Fake {
+        fn serving(tag: &str, zip: Vec<u8>) -> Fake {
+            Fake {
+                release: Ok(Release {
+                    tag: tag.into(),
+                    download_url: format!("https://example/{tag}.zip"),
+                }),
+                zip: Ok(zip),
+                downloads: RefCell::new(0),
+            }
+        }
+
+        fn offline() -> Fake {
+            Fake {
+                release: Err("no network".into()),
+                zip: Err("no network".into()),
+                downloads: RefCell::new(0),
+            }
+        }
+    }
+
+    impl Source for Fake {
+        fn latest_release(&self) -> Result<Release, String> {
+            match &self.release {
+                Ok(r) => Ok(Release {
+                    tag: r.tag.clone(),
+                    download_url: r.download_url.clone(),
+                }),
+                Err(e) => Err(e.clone()),
+            }
+        }
+
+        fn download(&self, _url: &str) -> Result<Vec<u8>, String> {
+            *self.downloads.borrow_mut() += 1;
+            self.zip.clone()
+        }
+    }
+
+    fn prepare_with(source: &Fake, cache: &Path) -> (Result<PathBuf, String>, Vec<String>) {
+        let mut said = Vec::new();
+        let result = prepare_from(source, cache, &mut |m| said.push(m.to_string()));
+        (result, said)
+    }
+
+    #[test]
+    fn the_first_run_downloads_and_unpacks_the_archive() {
+        let cache = TempFolder::new();
+        let fake = Fake::serving("V1", make_zip(&[("MENU", "menu")]));
+        let (result, said) = prepare_with(&fake, &cache.0);
+        let card = result.unwrap();
+        assert_eq!(card, cache.0.join("files"));
+        assert_eq!(fs::read_to_string(card.join("MENU")).unwrap(), "menu");
+        assert_eq!(*fake.downloads.borrow(), 1);
+        assert!(
+            said.iter().any(|m| m.contains("Downloading archive V1")),
+            "{said:?}"
+        );
+        assert_eq!(said.last().unwrap(), "Archive ready.");
+    }
+
+    #[test]
+    fn an_up_to_date_copy_is_not_downloaded_again() {
+        let cache = TempFolder::new();
+        install(&cache.0, "V1", &make_zip(&[("MENU", "menu")])).unwrap();
+        let fake = Fake::serving("V1", make_zip(&[("MENU", "different")]));
+        let (result, said) = prepare_with(&fake, &cache.0);
+        assert!(result.is_ok());
+        assert_eq!(*fake.downloads.borrow(), 0);
+        assert!(said.iter().any(|m| m.contains("up to date")), "{said:?}");
+        assert_eq!(
+            fs::read_to_string(cache.0.join("files/MENU")).unwrap(),
+            "menu"
+        );
+    }
+
+    #[test]
+    fn a_newer_release_replaces_the_copy_and_says_so() {
+        let cache = TempFolder::new();
+        install(&cache.0, "V1", &make_zip(&[("MENU", "old")])).unwrap();
+        let fake = Fake::serving("V2", make_zip(&[("MENU", "new")]));
+        let (result, said) = prepare_with(&fake, &cache.0);
+        assert!(result.is_ok());
+        assert!(said.iter().any(|m| m.contains("V1 -> V2")), "{said:?}");
+        assert_eq!(
+            fs::read_to_string(cache.0.join("files/MENU")).unwrap(),
+            "new"
+        );
+        assert_eq!(installed_version(&cache.0).as_deref(), Some("V2"));
+    }
+
+    #[test]
+    fn offline_with_a_copy_uses_it_and_offline_without_one_fails() {
+        let cache = TempFolder::new();
+        let (result, _) = prepare_with(&Fake::offline(), &cache.0);
+        assert!(
+            result
+                .unwrap_err()
+                .contains("cannot download the archive: no network")
+        );
+
+        install(&cache.0, "V1", &make_zip(&[("MENU", "menu")])).unwrap();
+        let (result, said) = prepare_with(&Fake::offline(), &cache.0);
+        assert_eq!(result.unwrap(), cache.0.join("files"));
+        assert!(said.iter().any(|m| m.contains("using V1")), "{said:?}");
+    }
+
+    #[test]
+    fn a_copy_that_lost_its_menu_is_treated_as_missing_and_fetched_again() {
+        let cache = TempFolder::new();
+        install(&cache.0, "V1", &make_zip(&[("OTHER", "x")])).unwrap();
+        let fake = Fake::serving("V1", make_zip(&[("MENU", "menu")]));
+        let (result, _) = prepare_with(&fake, &cache.0);
+        assert!(result.is_ok());
+        assert_eq!(
+            *fake.downloads.borrow(),
+            1,
+            "same version, but the copy was unusable"
+        );
+        assert!(cache.0.join("files/MENU").exists());
+    }
+
+    #[test]
+    fn a_failed_or_corrupt_download_leaves_an_existing_copy_alone() {
+        let cache = TempFolder::new();
+        install(&cache.0, "V1", &make_zip(&[("MENU", "old")])).unwrap();
+        let mut failing = Fake::serving("V2", vec![]);
+        failing.zip = Err("download failed: reset".into());
+        let (result, _) = prepare_with(&failing, &cache.0);
+        assert!(result.unwrap_err().contains("download failed"));
+        let corrupt = Fake::serving("V2", b"not a zip".to_vec());
+        let (result, _) = prepare_with(&corrupt, &cache.0);
+        assert!(result.unwrap_err().contains("not a valid zip"));
+        assert_eq!(
+            fs::read_to_string(cache.0.join("files/MENU")).unwrap(),
+            "old"
+        );
+        assert_eq!(installed_version(&cache.0).as_deref(), Some("V1"));
+    }
+
+    #[test]
+    fn the_version_file_is_trimmed_and_an_empty_one_counts_as_none() {
+        let cache = TempFolder::new();
+        assert_eq!(installed_version(&cache.0), None);
+        fs::write(cache.0.join(VERSION_FILE), "V9\n").unwrap();
+        assert_eq!(installed_version(&cache.0).as_deref(), Some("V9"));
+        fs::write(cache.0.join(VERSION_FILE), " \n").unwrap();
+        assert_eq!(installed_version(&cache.0), None);
+    }
+
+    #[test]
+    fn zip_directories_are_created_and_a_zip_without_files_is_fine() {
+        let cache = TempFolder::new();
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .add_directory("EMPTY/", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        let zip = writer.finish().unwrap().into_inner();
+        install(&cache.0, "V1", &zip).unwrap();
+        assert!(cache.0.join("files/EMPTY").is_dir());
     }
 }

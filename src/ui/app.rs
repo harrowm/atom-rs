@@ -10,7 +10,8 @@ use super::audio::AudioOutput;
 use super::debug::{Command, DebugWindows};
 use super::help_window::HelpWindows;
 use super::keyboard_window::KeyboardWindow;
-use super::keymap::{KeyMap, Target};
+use super::keymap::KeyMap;
+use super::logic::{self, CycleDebt};
 use super::screenshot;
 use super::settings::Settings;
 use super::tape_window::TapeCatalogueWindow;
@@ -21,29 +22,15 @@ use atom_rs::machine::atom::Machine;
 use atom_rs::machine::autoplay::TapeAutoplay;
 use atom_rs::machine::debug_session::DebugSession;
 use atom_rs::machine::disk::DiskImage;
-use atom_rs::machine::joystick::Joystick;
-use atom_rs::machine::keyboard::find_key;
 use atom_rs::machine::memory::{GDOS_BANKS, MAX_VIDEO_RAM_KB, RamPreset, RomSlot, SidAddress};
 use atom_rs::machine::sid::SidModel;
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
 
-/// The Atom's CPU clock.
-const CLOCK_HZ: f64 = 1_000_000.0;
-
-/// If the window stalls (dragged, minimised...), don't try to catch up with
-/// more than this much emulated time.
-const MAX_CATCH_UP_SECONDS: f64 = 0.1;
-
 /// Emulation gets at most this much real time per screen refresh, leaving the
 /// rest for drawing. At high speed settings the Atom simply runs slower than
 /// asked if the computer cannot keep up.
 const MAX_EMULATION_TIME_PER_UPDATE: Duration = Duration::from_millis(12);
-
-/// Run the CPU in slices this long between checks of the real-time budget.
-const SLICE_CYCLES: u64 = 20_000;
-
-const MAX_SPEED: f32 = 100.0;
 
 /// How long sound stays off after the Atom restarts, so the fade out and the
 /// fade back in do not overlap the restart itself.
@@ -105,7 +92,7 @@ pub struct AtomApp {
     disk_paths: [Option<PathBuf>; 2],
     last_update: Instant,
     /// Emulated cycles we are owed but have not run yet.
-    cycle_debt: f64,
+    cycle_debt: CycleDebt,
     /// Speed actually achieved, as a multiple of a real Atom (updated about once a second).
     achieved_speed: f64,
     speed_sample_start: Instant,
@@ -148,7 +135,7 @@ impl AtomApp {
             autoplay_tape: false,
             autoplay: TapeAutoplay::default(),
             last_update: Instant::now(),
-            cycle_debt: 0.0,
+            cycle_debt: CycleDebt::default(),
             achieved_speed: 0.0,
             speed_sample_start: Instant::now(),
             speed_sample_cycles: 0,
@@ -287,13 +274,8 @@ impl AtomApp {
             start_delay = 0; // a restored machine is already running
         }
         if let Some(text) = &options.run {
-            // The disk system must be switched on before it can run anything.
-            let uses_disk = options.disks.iter().any(Option::is_some) && options.sdcard.is_none();
-            let text = if uses_disk && !text.starts_with("*DOS") {
-                format!("*DOS\n{text}")
-            } else {
-                text.clone()
-            };
+            let uses_disk = options.disks.iter().any(Option::is_some);
+            let text = logic::text_to_run(text, uses_disk, options.sdcard.is_some());
             let start = self.atom.bus.vdg.frames + start_delay;
             self.typist.type_text(&text, start);
         }
@@ -495,29 +477,13 @@ impl AtomApp {
         let frame = self.atom.bus.vdg.frames;
         let ready = self.atom.ready_for_input();
         let keyboard = &mut self.atom.bus.ppi.keyboard;
-        keyboard.release_all();
-        let mut atom_shift = modifiers.shift;
-        let (mut atom_ctrl, mut atom_rept) = (modifiers.ctrl, modifiers.alt);
-        let mut stick = Joystick::default();
-        for host_key in keys_down {
-            if self.joystick_keys && press_joystick_key(&mut stick, host_key) {
-                continue; // the arrow keys steer instead of typing
-            }
-            match self.keymap.target_for(host_key) {
-                Some(Target::Key { name, shift }) => {
-                    let (row, column) = find_key(name).expect("key maps only name real keys");
-                    keyboard.set_key(row, column, true);
-                    atom_shift |= *shift;
-                }
-                Some(Target::Shift) => atom_shift = true,
-                Some(Target::Ctrl) => atom_ctrl = true,
-                Some(Target::Rept) => atom_rept = true,
-                None => {}
-            }
-        }
-        keyboard.shift = atom_shift;
-        keyboard.ctrl = atom_ctrl;
-        keyboard.rept = atom_rept;
+        let stick = logic::press_host_keys(
+            keyboard,
+            keys_down,
+            modifiers,
+            &self.keymap,
+            self.joystick_keys,
+        );
         // The typist adds its own key presses on top of the real keyboard's.
         self.typist.update(keyboard, frame, ready);
         self.atom.set_joystick(self.joystick_keys.then_some(stick));
@@ -561,25 +527,25 @@ impl AtomApp {
         }
 
         let speed = self.effective_speed();
-        self.cycle_debt += elapsed.min(MAX_CATCH_UP_SECONDS) * CLOCK_HZ * speed as f64;
+        self.cycle_debt.owe(elapsed, speed);
 
         // Run in slices until we have caught up or used up this update's time budget.
-        while self.cycle_debt >= 1.0 && now.elapsed() < MAX_EMULATION_TIME_PER_UPDATE {
-            let slice = (self.cycle_debt as u64).min(SLICE_CYCLES);
+        while let Some(slice) = self.cycle_debt.next_slice() {
+            if now.elapsed() >= MAX_EMULATION_TIME_PER_UPDATE {
+                break;
+            }
             let start = self.atom.bus.cycles;
             let stopped = self.session.run_cycles(&mut self.atom, slice);
             let executed = self.atom.bus.cycles - start;
-            self.cycle_debt -= executed as f64;
+            self.cycle_debt.paid(executed);
             self.speed_sample_cycles += executed;
             if stopped {
-                self.cycle_debt = 0.0;
+                self.cycle_debt.forget();
                 break;
             }
         }
         // Out of time: forget the backlog rather than spiralling.
-        if self.cycle_debt >= 1.0 {
-            self.cycle_debt = 0.0;
-        }
+        self.cycle_debt.forget_backlog();
         self.update_achieved_speed();
         self.send_audio(speed);
     }
@@ -587,11 +553,7 @@ impl AtomApp {
     /// The speed we are really running at: the slider, unless fast-tape is
     /// on and the tape is playing.
     fn effective_speed(&self) -> f32 {
-        if self.fast_tape && self.atom.bus.tape.playing {
-            MAX_SPEED
-        } else {
-            self.speed
-        }
+        logic::effective_speed(self.speed, self.fast_tape, self.atom.bus.tape.playing)
     }
 
     /// Pass the speaker sound produced since last time to the sound card.
@@ -600,7 +562,7 @@ impl AtomApp {
     fn send_audio(&mut self, speed: f32) {
         let samples = self.atom.bus.sound.take_samples();
         let Some(audio) = &self.audio else { return };
-        if self.muted || speed > 1.05 {
+        if !logic::sound_is_audible(self.muted, speed) {
             return;
         }
         // Just after a restart: stay silent for a moment (see restart_audio).
@@ -612,9 +574,7 @@ impl AtomApp {
         }
         // The samples are 0.0-1.0 (the fraction of time the speaker was high);
         // centre them on zero and apply the volume.
-        let gain = self.volume * 2.0;
-        let centred: Vec<f32> = samples.iter().map(|s| (s - 0.5) * gain).collect();
-        audio.push(&centred);
+        audio.push(&logic::centred_samples(&samples, self.volume));
     }
 
     // ---- Tape and file loading ------------------------------------------
@@ -702,7 +662,7 @@ impl AtomApp {
         self.restart_audio();
         self.notice = Some(match self.atom.load_state(state) {
             Ok(()) => {
-                self.cycle_debt = 0.0;
+                self.cycle_debt.forget();
                 self.session.stop_message = None;
                 success_message.to_string()
             }
@@ -871,7 +831,7 @@ impl AtomApp {
     fn update_achieved_speed(&mut self) {
         let seconds = self.speed_sample_start.elapsed().as_secs_f64();
         if seconds >= 1.0 {
-            self.achieved_speed = self.speed_sample_cycles as f64 / seconds / CLOCK_HZ;
+            self.achieved_speed = logic::achieved_speed(self.speed_sample_cycles, seconds);
             self.speed_sample_start = Instant::now();
             self.speed_sample_cycles = 0;
         }
@@ -960,7 +920,7 @@ impl AtomApp {
                 }
                 ui.horizontal(|ui| {
                     ui.add(
-                        egui::Slider::new(&mut self.speed, 0.1..=MAX_SPEED)
+                        egui::Slider::new(&mut self.speed, 0.1..=logic::MAX_SPEED)
                             .logarithmic(true)
                             .text("speed"),
                     );
@@ -1425,53 +1385,6 @@ impl eframe::App for AtomApp {
     }
 }
 
-/// With the joystick switched on, the arrow keys steer it and Space is fire.
-/// Returns true if the key was used up (the arrows), so it does not also type
-/// the Atom's cursor keys. Space is fire and still types a space, so menus
-/// that wait for it keep working.
-fn press_joystick_key(stick: &mut Joystick, key: Key) -> bool {
-    match key {
-        Key::ArrowLeft => stick.left = true,
-        Key::ArrowRight => stick.right = true,
-        Key::ArrowUp => stick.up = true,
-        Key::ArrowDown => stick.down = true,
-        Key::Space => {
-            stick.fire = true;
-            return false;
-        }
-        _ => return false,
-    }
-    true
-}
-
-#[cfg(test)]
-mod joystick_key_tests {
-    use super::*;
-
-    #[test]
-    fn arrows_steer_and_are_used_up() {
-        let mut stick = Joystick::default();
-        for key in [Key::ArrowLeft, Key::ArrowUp] {
-            assert!(press_joystick_key(&mut stick, key));
-        }
-        assert!(stick.left && stick.up && !stick.right && !stick.down && !stick.fire);
-    }
-
-    #[test]
-    fn space_fires_but_still_types() {
-        let mut stick = Joystick::default();
-        assert!(!press_joystick_key(&mut stick, Key::Space));
-        assert!(stick.fire);
-    }
-
-    #[test]
-    fn other_keys_are_left_alone() {
-        let mut stick = Joystick::default();
-        assert!(!press_joystick_key(&mut stick, Key::A));
-        assert_eq!(stick, Joystick::default());
-    }
-}
-
 #[cfg(test)]
 mod settings_tests {
     use super::*;
@@ -1618,6 +1531,386 @@ mod archive_job_tests {
             app.atom.machine(),
             Machine::GdosAtom,
             "the late archive must not switch it"
+        );
+    }
+}
+
+#[cfg(test)]
+mod loading_tests {
+    use super::*;
+    use crate::cli::Options;
+    use atom_rs::machine::tape::TapeChunk;
+
+    fn app() -> Option<AtomApp> {
+        let mut app = AtomApp::new(PathBuf::from("roms"), Options::default());
+        if app.rom_error.is_some() {
+            return None;
+        }
+        app.atom
+            .set_machine(Machine::FloppyAtom, &app.rom_dir, None)
+            .ok()?;
+        app.notice = None;
+        Some(app)
+    }
+
+    /// A scratch folder that is removed afterwards.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(label: &str) -> Scratch {
+            let path = std::env::temp_dir().join(format!(
+                "atom-rs-app-{label}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Scratch(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn notice(app: &AtomApp) -> &str {
+        app.notice.as_deref().unwrap_or("")
+    }
+
+    #[test]
+    fn a_disk_file_goes_into_the_drive_and_its_path_is_remembered() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("disk");
+        let ssd = folder.0.join("one.ssd");
+        std::fs::write(&ssd, DiskImage::blank_80_track(1).to_bytes()).unwrap();
+        app.insert_disk_file(1, &ssd);
+        assert!(app.atom.bus.fdc.drives[1].is_some());
+        assert!(
+            app.atom.bus.fdc.drives[0].is_none(),
+            "the other drive is untouched"
+        );
+        assert_eq!(app.disk_paths[1].as_deref(), Some(ssd.as_path()));
+        assert_eq!(app.atom.bus.fdc.drives[1].as_ref().unwrap().sides, 1);
+        assert!(notice(&app).contains("one.ssd"), "{}", notice(&app));
+    }
+
+    #[test]
+    fn a_dsd_file_is_read_as_double_sided() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("dsd");
+        let dsd = folder.0.join("two.DSD");
+        std::fs::write(&dsd, DiskImage::blank_80_track(2).to_bytes()).unwrap();
+        app.insert_disk_file(0, &dsd);
+        assert_eq!(app.atom.bus.fdc.drives[0].as_ref().unwrap().sides, 2);
+    }
+
+    #[test]
+    fn a_missing_or_bad_disk_file_says_so_and_changes_nothing() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("baddisk");
+        app.insert_disk_file(0, &folder.0.join("missing.ssd"));
+        assert!(notice(&app).starts_with("Cannot load"), "{}", notice(&app));
+        let junk = folder.0.join("junk.ssd");
+        std::fs::write(&junk, b"too short to be a disk").unwrap();
+        app.insert_disk_file(0, &junk);
+        assert!(notice(&app).starts_with("Cannot load"), "{}", notice(&app));
+        assert!(app.atom.bus.fdc.drives[0].is_none());
+        assert!(app.disk_paths[0].is_none());
+    }
+
+    #[test]
+    fn saving_a_disk_writes_it_back_to_its_file_and_clears_the_modified_flag() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("savedisk");
+        let path = folder.0.join("d.ssd");
+        std::fs::write(&path, DiskImage::blank_80_track(1).to_bytes()).unwrap();
+        app.insert_disk_file(0, &path);
+        let disk = app.atom.bus.fdc.drives[0].as_mut().unwrap();
+        disk.write_sector(0, 0, 0, &[0x42; 256]);
+        assert!(disk.modified);
+        app.save_disk(0, false);
+        assert!(notice(&app).starts_with("Saved"), "{}", notice(&app));
+        assert!(!app.atom.bus.fdc.drives[0].as_ref().unwrap().modified);
+        assert_eq!(std::fs::read(&path).unwrap()[0], 0x42);
+    }
+
+    #[test]
+    fn a_blank_disk_has_no_file_and_ejecting_removes_disk_and_path() {
+        let Some(mut app) = app() else { return };
+        app.disk_paths[0] = Some(PathBuf::from("old.ssd"));
+        app.new_blank_disk(0);
+        assert!(app.atom.bus.fdc.drives[0].is_some());
+        assert!(app.disk_paths[0].is_none());
+        assert!(notice(&app).contains("Blank"));
+        app.eject_disk(0);
+        assert!(app.atom.bus.fdc.drives[0].is_none());
+        app.save_disk(0, false); // nothing in the drive: nothing happens, no dialog
+    }
+
+    #[test]
+    fn a_tape_file_is_inserted_and_a_bad_one_reported() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("tape");
+        let good = folder.0.join("t.uef");
+        let image = atom_rs::machine::tape::TapeImage {
+            chunks: vec![TapeChunk::Carrier { cycles: 10 }, TapeChunk::Byte(1)],
+        };
+        std::fs::write(&good, image.to_uef()).unwrap();
+        app.insert_tape_file(&good);
+        assert!(app.atom.bus.tape.has_tape());
+        assert!(notice(&app).starts_with("Inserted"), "{}", notice(&app));
+
+        app.atom.bus.tape.eject();
+        let bad = folder.0.join("bad.uef");
+        std::fs::write(&bad, b"not a tape").unwrap();
+        app.insert_tape_file(&bad);
+        assert!(!app.atom.bus.tape.has_tape());
+        assert!(notice(&app).starts_with("Cannot load"), "{}", notice(&app));
+        app.insert_tape_file(&folder.0.join("missing.uef"));
+        assert!(notice(&app).starts_with("Cannot load"), "{}", notice(&app));
+    }
+
+    #[test]
+    fn recording_starts_on_one_call_and_puts_the_tape_in_the_player_on_the_next() {
+        let Some(mut app) = app() else { return };
+        app.toggle_recording();
+        assert!(app.atom.bus.tape.recording);
+        for n in 0..9600 {
+            app.atom.bus.tape.record(n % 2 == 0);
+        }
+        app.toggle_recording();
+        assert!(!app.atom.bus.tape.recording);
+        assert!(app.atom.bus.tape.has_tape());
+        assert!(
+            notice(&app).starts_with("Recorded 2.0s"),
+            "{}",
+            notice(&app)
+        );
+    }
+
+    #[test]
+    fn a_missing_state_file_is_reported_and_a_bad_one_leaves_the_machine_alone() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("state");
+        app.load_state_path(&folder.0.join("nothing.state"));
+        assert!(notice(&app).starts_with("Cannot read"), "{}", notice(&app));
+        let junk = folder.0.join("junk.state");
+        std::fs::write(&junk, b"junk").unwrap();
+        app.atom.cpu.regs.a = 0x42;
+        app.load_state_path(&junk);
+        assert_eq!(app.atom.cpu.regs.a, 0x42);
+        assert!(!notice(&app).starts_with("Restored"), "{}", notice(&app));
+    }
+
+    #[test]
+    fn a_saved_state_comes_back_through_quick_save_and_quick_load() {
+        let Some(mut app) = app() else { return };
+        app.quick_load();
+        let nothing_yet = notice(&app).to_string();
+        app.atom.cpu.regs.a = 0x11;
+        app.quick_save();
+        app.atom.cpu.regs.a = 0x22;
+        app.quick_load();
+        assert_eq!(app.atom.cpu.regs.a, 0x11);
+        assert_ne!(notice(&app), nothing_yet);
+    }
+
+    #[test]
+    fn start_options_switch_things_on_and_load_the_files_named() {
+        let Some(mut app) = app() else { return };
+        let folder = Scratch::new("start");
+        let ssd = folder.0.join("a.ssd");
+        std::fs::write(&ssd, DiskImage::blank_80_track(1).to_bytes()).unwrap();
+        let uef = folder.0.join("a.uef");
+        std::fs::write(&uef, atom_rs::machine::tape::TapeImage::default().to_uef()).unwrap();
+        let options = Options {
+            joystick: true,
+            fast_tape: true,
+            disks: [Some(ssd), None],
+            tape: Some(uef),
+            run: Some("PRINT 1\n".to_string()),
+            ..Options::default()
+        };
+        app.apply_start_options(&options);
+        assert!(app.joystick_keys);
+        assert!(app.fast_tape);
+        assert!(app.autoplay_tape);
+        assert!(app.atom.bus.fdc.drives[0].is_some());
+        assert!(app.atom.bus.tape.has_tape());
+    }
+
+    #[test]
+    fn start_options_never_switch_a_saved_setting_off() {
+        let Some(mut app) = app() else { return };
+        app.joystick_keys = true;
+        app.fast_tape = true;
+        app.apply_start_options(&Options::default());
+        assert!(app.joystick_keys && app.fast_tape);
+        assert!(!app.autoplay_tape);
+    }
+
+    #[test]
+    fn nothing_is_applied_when_the_roms_could_not_be_loaded() {
+        let Some(mut app) = app() else { return };
+        app.rom_error = Some("no roms".into());
+        app.apply_start_options(&Options {
+            joystick: true,
+            ..Options::default()
+        });
+        assert!(!app.joystick_keys);
+    }
+
+    #[test]
+    fn the_effective_speed_follows_the_tape_when_fast_tape_is_on() {
+        let Some(mut app) = app() else { return };
+        app.speed = 1.0;
+        app.fast_tape = true;
+        assert_eq!(app.effective_speed(), 1.0);
+        app.atom.bus.tape.playing = true;
+        assert_eq!(app.effective_speed(), logic::MAX_SPEED);
+    }
+
+    // ---- Drawing -----------------------------------------------------------------------------
+
+    /// Draw the three main panels once (the menu, status bar and screen) the
+    /// way `ui` does, without touching the settings file.
+    fn draw(app: &mut AtomApp, ctx: &egui::Context, events: Vec<egui::Event>) {
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            egui::Panel::top("menu").show(ui, |ui| app.menu_bar(ui));
+            egui::Panel::bottom("status").show(ui, |ui| app.status_bar(ui));
+            egui::CentralPanel::default().show(ui, |ui| app.screen(ui));
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn the_main_window_draws_in_every_state_it_can_be_in() {
+        let Some(mut app) = app() else { return };
+        let ctx = egui::Context::default();
+        draw(&mut app, &ctx, vec![]);
+
+        app.notice = Some("A notice for the status bar".to_string());
+        app.session.running = false;
+        draw(&mut app, &ctx, vec![]);
+
+        app.session.running = true;
+        app.atom.bus.fdc.drives[0] = Some(DiskImage::blank_80_track(2));
+        app.atom.bus.fdc.drives[1] = Some(DiskImage::blank_80_track(1));
+        app.disk_paths[0] = Some(PathBuf::from("a.dsd"));
+        app.atom.bus.tape.insert(atom_rs::machine::tape::TapeImage {
+            chunks: vec![atom_rs::machine::tape::TapeChunk::Byte(1)],
+        });
+        app.atom.bus.tape.playing = true;
+        app.fast_tape = true;
+        app.muted = true;
+        app.integer_scaling = true;
+        app.autoplay_tape = true;
+        app.atom.bus.tape.recording = true;
+        draw(&mut app, &ctx, vec![]);
+        app.fullscreen = true;
+        app.joystick_keys = true;
+        app.colour_board = false;
+        draw(&mut app, &ctx, vec![]);
+    }
+
+    #[test]
+    fn the_window_shows_the_problem_instead_of_the_screen_if_the_roms_are_missing() {
+        let Some(mut app) = app() else { return };
+        app.rom_error = Some("Cannot find os.rom".to_string());
+        draw(&mut app, &egui::Context::default(), vec![]);
+    }
+
+    #[test]
+    fn every_machine_can_be_drawn_after_switching_to_it() {
+        let Some(mut app) = app() else { return };
+        let ctx = egui::Context::default();
+        for machine in [Machine::FloppyAtom, Machine::GdosAtom, Machine::BbcBasic] {
+            app.switch_machine(machine);
+            draw(&mut app, &ctx, vec![]);
+        }
+    }
+
+    #[test]
+    fn every_debugger_window_draws_and_a_paused_machine_can_be_stepped() {
+        let Some(mut app) = app() else { return };
+        let ctx = egui::Context::default();
+        app.debug_windows.show_cpu = true;
+        app.debug_windows.show_disassembly = true;
+        app.debug_windows.show_memory = true;
+        app.debug_windows.show_breakpoints = true;
+        app.debug_windows.show_hardware = true;
+        app.debug_windows.show_console = true;
+        app.debug_windows.show_history = true;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let commands = app
+                .debug_windows
+                .show(ui.ctx(), &mut app.atom, &mut app.session);
+            for command in commands {
+                app.execute(command);
+            }
+        });
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn running_the_emulation_advances_the_machine_in_real_time_and_stops_when_paused() {
+        let Some(mut app) = app() else { return };
+        app.last_update = Instant::now() - Duration::from_millis(50);
+        let before = app.atom.bus.cycles;
+        app.run_emulation();
+        assert!(
+            app.atom.bus.cycles > before,
+            "50 ms of real time runs some cycles"
+        );
+
+        app.session.running = false;
+        app.last_update = Instant::now() - Duration::from_millis(50);
+        let paused_at = app.atom.bus.cycles;
+        app.run_emulation();
+        assert_eq!(
+            app.atom.bus.cycles, paused_at,
+            "a paused machine does not run"
+        );
+    }
+
+    #[test]
+    fn host_keys_held_down_reach_the_atoms_keyboard() {
+        let Some(mut app) = app() else { return };
+        let ctx = egui::Context::default();
+        let key = |key: Key, pressed: bool| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let input = egui::RawInput {
+            events: vec![key(Key::A, true)],
+            ..Default::default()
+        };
+        ctx.run_ui(input, |_| {}).textures_delta.clear();
+        app.update_keyboard(&ctx);
+        let (row, column) = atom_rs::machine::keyboard::find_key("A").unwrap();
+        assert_eq!(
+            app.atom.bus.ppi.keyboard.read_port_b(row as u8) & (1 << column),
+            0,
+            "A is held down on the Atom"
+        );
+        let input = egui::RawInput {
+            events: vec![key(Key::A, false)],
+            ..Default::default()
+        };
+        ctx.run_ui(input, |_| {}).textures_delta.clear();
+        app.update_keyboard(&ctx);
+        assert_ne!(
+            app.atom.bus.ppi.keyboard.read_port_b(row as u8) & (1 << column),
+            0
         );
     }
 }

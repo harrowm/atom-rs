@@ -7,6 +7,7 @@ pub mod debug;
 pub mod help_window;
 pub mod keyboard_window;
 pub mod keymap;
+pub mod logic;
 pub mod screenshot;
 pub mod settings;
 pub mod tape_window;
