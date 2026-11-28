@@ -210,4 +210,104 @@ mod tests {
         assert!(slots.windows(2).all(|pair| pair[0] <= pair[1]));
         assert_eq!(slots.len() as u32, FETCH_CYCLES);
     }
+
+    // ---- The video mode codes (data sheet Table 1) --------------------------------------
+
+    /// The 8255's port A bit 4 is the 6847's A/G (graphics) pin and bits 5-7 are
+    /// GM0-GM2, so the high nibble of port A is `A/G | GM << 1`. The eight
+    /// graphics modes are, in GM order, CG1, RG1, CG2, RG2, CG3, RG3, CG6, RG6.
+    const GRAPHICS_BY_GM: [(u32, u32, u32); 8] = [
+        (64, 64, 4),
+        (128, 64, 2),
+        (128, 64, 4),
+        (128, 96, 2),
+        (128, 96, 4),
+        (128, 192, 2),
+        (128, 192, 4),
+        (256, 192, 2),
+    ];
+
+    #[test]
+    fn all_sixteen_mode_codes_decode_as_the_data_sheet_says() {
+        for bits in 0..16u8 {
+            let expected = if bits & 1 == 0 {
+                VideoMode::Text // A/G clear: alphanumeric, whatever GM says
+            } else {
+                let (width, height, colours) = GRAPHICS_BY_GM[usize::from(bits >> 1)];
+                VideoMode::Graphics {
+                    width,
+                    height,
+                    colours,
+                }
+            };
+            assert_eq!(
+                VideoMode::from_port_a_high_nibble(bits),
+                expected,
+                "code {bits:#X}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_low_four_bits_of_the_code_count() {
+        for bits in 0..16u8 {
+            assert_eq!(
+                VideoMode::from_port_a_high_nibble(bits | 0xF0),
+                VideoMode::from_port_a_high_nibble(bits)
+            );
+        }
+    }
+
+    #[test]
+    fn the_graphics_modes_fit_in_the_6k_of_video_memory_the_atom_has() {
+        for (width, height, colours) in GRAPHICS_BY_GM {
+            let bits_per_pixel = if colours == 2 { 1 } else { 2 };
+            let bytes = width * height * bits_per_pixel / 8;
+            assert!(
+                bytes <= 6144,
+                "{width}x{height}x{colours} needs {bytes} bytes"
+            );
+        }
+    }
+
+    // ---- NTSC and PAL ---------------------------------------------------------------------
+
+    #[test]
+    fn ntsc_has_262_lines_and_pal_312() {
+        assert_eq!(Standard::Ntsc.lines_per_frame(), 262);
+        assert_eq!(Standard::Pal.lines_per_frame(), 312);
+        assert_eq!(
+            Standard::default(),
+            Standard::Ntsc,
+            "the Atom model is NTSC"
+        );
+    }
+
+    #[test]
+    fn a_pal_frame_takes_312_lines_of_64_cycles() {
+        let mut vdg = Vdg::new(Standard::Pal);
+        for _ in 0..(CYCLES_PER_LINE * 312 - 1) {
+            vdg.tick();
+        }
+        assert_eq!(
+            (vdg.frames, vdg.line()),
+            (0, 311),
+            "the last cycle of the frame"
+        );
+        vdg.tick();
+        assert_eq!((vdg.frames, vdg.line()), (1, 0), "then it starts again");
+        assert_eq!(vdg.lines_per_frame(), 312);
+    }
+
+    #[test]
+    fn the_line_counter_counts_all_262_ntsc_lines_then_wraps() {
+        let mut vdg = Vdg::new(Standard::Ntsc);
+        let mut lines_seen = std::collections::BTreeSet::new();
+        for _ in 0..(CYCLES_PER_LINE * 262) {
+            lines_seen.insert(vdg.line());
+            vdg.tick();
+        }
+        assert_eq!(lines_seen.len(), 262);
+        assert_eq!((vdg.frames, vdg.line()), (1, 0));
+    }
 }

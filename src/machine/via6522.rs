@@ -345,4 +345,339 @@ mod tests {
         assert!(!via.irq());
         assert_eq!(via.read(0xD), 0x40, "flag set, but not 'any enabled'");
     }
+
+    // ---- Registers ------------------------------------------------------------------------
+
+    const ORB: u16 = 0x0;
+    const ORA: u16 = 0x1;
+    const DDRB: u16 = 0x2;
+    const DDRA: u16 = 0x3;
+    const T1C_L: u16 = 0x4;
+    const T1C_H: u16 = 0x5;
+    const T1L_L: u16 = 0x6;
+    const T1L_H: u16 = 0x7;
+    const T2C_L: u16 = 0x8;
+    const T2C_H: u16 = 0x9;
+    const SR: u16 = 0xA;
+    const ACR: u16 = 0xB;
+    const PCR: u16 = 0xC;
+    const IFR: u16 = 0xD;
+    const IER: u16 = 0xE;
+    const ORA_NO_HANDSHAKE: u16 = 0xF;
+
+    #[test]
+    fn the_registers_that_just_hold_a_byte_read_back_what_was_written() {
+        let mut via = Via::new();
+        for (register, value) in [
+            (DDRA, 0xA5),
+            (DDRB, 0x5A),
+            (SR, 0x3C),
+            (ACR, 0x41),
+            (PCR, 0xCE),
+        ] {
+            via.write(register, value);
+            assert_eq!(via.read(register), value, "register {register:X}");
+        }
+    }
+
+    #[test]
+    fn the_registers_repeat_every_sixteen_addresses() {
+        let mut via = Via::new();
+        via.write(0xB800 + DDRA, 0x77);
+        assert_eq!(
+            via.read(0xBFF0 + DDRA),
+            0x77,
+            "only the low four address bits choose the register"
+        );
+    }
+
+    #[test]
+    fn the_power_on_state_has_everything_off() {
+        let mut via = Via::new();
+        let state = via.snapshot();
+        assert_eq!(
+            (state.direction_a, state.direction_b),
+            (0, 0),
+            "every pin an input"
+        );
+        assert_eq!((state.output_a, state.output_b), (0, 0));
+        assert_eq!((state.aux_control, state.peripheral_control), (0, 0));
+        assert_eq!((state.flags, state.enables), (0, 0));
+        assert!(!via.irq());
+        assert_eq!(via.read(IER), 0x80, "IER reads with bit 7 set");
+        assert_eq!(via.read(IFR), 0);
+        let again = Via::default().snapshot();
+        assert_eq!(
+            (again.flags, again.timer1, again.timer2),
+            (state.flags, state.timer1, state.timer2)
+        );
+    }
+
+    #[test]
+    fn port_b_mixes_its_output_bits_and_its_input_pins_by_the_direction_register() {
+        let mut via = Via::new();
+        via.input_b = 0b0000_1111;
+        via.write(DDRB, 0b1111_0000);
+        via.write(ORB, 0b1010_1010);
+        assert_eq!(
+            via.read(ORB),
+            0b1010_1111,
+            "high nibble from the register, low from the pins"
+        );
+        via.write(DDRB, 0);
+        assert_eq!(via.read(ORB), 0b0000_1111, "all inputs: only the pins");
+    }
+
+    #[test]
+    fn port_a_without_handshake_is_port_a_but_leaves_the_handshake_flags_alone() {
+        let mut via = Via::new();
+        via.write(DDRA, 0xFF);
+        via.write(ORA_NO_HANDSHAKE, 0x42);
+        assert_eq!(via.read(ORA_NO_HANDSHAKE), 0x42);
+        assert_eq!(via.read(ORA), 0x42, "the same register");
+        via.flags = irq::CA1 | irq::CA2;
+        via.read(ORA_NO_HANDSHAKE);
+        via.write(ORA_NO_HANDSHAKE, 1);
+        assert_eq!(
+            via.flags,
+            irq::CA1 | irq::CA2,
+            "no handshake: the flags stay"
+        );
+        via.read(ORA);
+        assert_eq!(via.flags, 0, "the ordinary port A access clears them");
+    }
+
+    // ---- Interrupt flags and enables -------------------------------------------------------
+
+    #[test]
+    fn the_enable_register_sets_and_clears_by_bit_seven() {
+        let mut via = Via::new();
+        via.write(IER, 0x80 | irq::TIMER1 | irq::CB1);
+        assert_eq!(
+            via.read(IER),
+            0x80 | irq::TIMER1 | irq::CB1,
+            "bit 7 always reads 1"
+        );
+        via.write(IER, irq::TIMER1); // bit 7 clear: the 1 bits are cleared
+        assert_eq!(via.read(IER), 0x80 | irq::CB1);
+        via.write(IER, 0xFF);
+        assert_eq!(via.read(IER), 0xFF, "all seven");
+        via.write(IER, 0x7F);
+        assert_eq!(via.read(IER), 0x80, "none");
+    }
+
+    #[test]
+    fn a_flag_is_cleared_by_writing_a_one_to_it_and_not_by_writing_a_zero() {
+        let mut via = Via::new();
+        via.flags = irq::TIMER1 | irq::TIMER2 | irq::CB1;
+        via.write(IFR, irq::TIMER2);
+        assert_eq!(
+            via.flags,
+            irq::TIMER1 | irq::CB1,
+            "only the written bit went"
+        );
+        via.write(IFR, 0x80); // bit 7 is not a flag
+        via.write(IFR, 0x00);
+        assert_eq!(via.flags, irq::TIMER1 | irq::CB1);
+        via.write(IFR, 0x7F);
+        assert_eq!(via.flags, 0);
+    }
+
+    #[test]
+    fn the_irq_output_needs_a_flag_that_is_enabled_and_bit_seven_of_the_flags_shows_it() {
+        let mut via = Via::new();
+        via.flags = irq::TIMER1;
+        assert!(!via.irq(), "flagged but not enabled");
+        assert_eq!(via.read(IFR), irq::TIMER1, "bit 7 clear");
+        via.write(IER, 0x80 | irq::TIMER2);
+        assert!(!via.irq(), "another one enabled");
+        via.write(IER, 0x80 | irq::TIMER1);
+        assert!(via.irq());
+        assert_eq!(
+            via.read(IFR),
+            0x80 | irq::TIMER1,
+            "bit 7: an enabled interrupt is active"
+        );
+        via.write(IER, irq::TIMER1);
+        assert!(!via.irq());
+    }
+
+    #[test]
+    fn reading_and_writing_the_ports_clears_their_handshake_flags() {
+        let all = irq::CA1 | irq::CA2 | irq::CB1 | irq::CB2 | irq::TIMER1;
+        for (access, cleared) in [
+            ("read ORA", irq::CA1 | irq::CA2),
+            ("write ORA", irq::CA1 | irq::CA2),
+            ("read ORB", irq::CB1 | irq::CB2),
+            ("write ORB", irq::CB1 | irq::CB2),
+        ] {
+            let mut via = Via::new();
+            via.flags = all;
+            match access {
+                "read ORA" => drop(via.read(ORA)),
+                "write ORA" => via.write(ORA, 1),
+                "read ORB" => drop(via.read(ORB)),
+                _ => via.write(ORB, 1),
+            }
+            assert_eq!(via.flags, all & !cleared, "{access}");
+        }
+    }
+
+    #[test]
+    fn the_timer_flags_are_cleared_by_reading_the_low_counter_or_writing_the_high_one() {
+        for (what, clears_t1, clears_t2) in [
+            ("read T1C-L", true, false),
+            ("write T1C-H", true, false),
+            ("write T1L-H", true, false),
+            ("read T2C-L", false, true),
+            ("write T2C-H", false, true),
+            ("read T1C-H", false, false),
+            ("read T1L-L", false, false),
+            ("write T1L-L", false, false),
+        ] {
+            let mut via = Via::new();
+            via.flags = irq::TIMER1 | irq::TIMER2;
+            match what {
+                "read T1C-L" => drop(via.read(T1C_L)),
+                "write T1C-H" => via.write(T1C_H, 1),
+                "write T1L-H" => via.write(T1L_H, 1),
+                "read T2C-L" => drop(via.read(T2C_L)),
+                "write T2C-H" => via.write(T2C_H, 1),
+                "read T1C-H" => drop(via.read(T1C_H)),
+                "read T1L-L" => drop(via.read(T1L_L)),
+                _ => via.write(T1L_L, 1),
+            }
+            assert_eq!(via.flags & irq::TIMER1 == 0, clears_t1, "{what}: T1 flag");
+            assert_eq!(via.flags & irq::TIMER2 == 0, clears_t2, "{what}: T2 flag");
+        }
+    }
+
+    // ---- Timer 1 ---------------------------------------------------------------------------
+
+    #[test]
+    fn the_timer_1_latch_and_counter_are_separate_until_the_high_byte_is_written() {
+        let mut via = Via::new();
+        via.write(T1C_L, 0x34); // goes to the latch only
+        via.write(T1L_H, 0x12); // latch high, without starting the timer
+        assert_eq!((via.read(T1L_L), via.read(T1L_H)), (0x34, 0x12));
+        assert_eq!(
+            via.snapshot().timer1,
+            0xFFFF,
+            "the counter has not been loaded"
+        );
+        via.write(T1C_H, 0x12); // loads the counter from the latch and starts it
+        assert_eq!(via.snapshot().timer1, 0x1234);
+        run(&mut via, 4);
+        assert_eq!(
+            (via.read(T1C_H), via.read(T1C_L)),
+            (0x12, 0x30),
+            "it counts down"
+        );
+    }
+
+    #[test]
+    fn in_one_shot_mode_the_counter_carries_on_down_after_the_interrupt_without_another() {
+        let mut via = Via::new();
+        via.write(T1C_L, 3);
+        via.write(T1C_H, 0);
+        run(&mut via, 4);
+        assert_eq!(via.flags & irq::TIMER1, irq::TIMER1);
+        via.read(T1C_L); // acknowledge
+        run(&mut via, 70_000);
+        assert_eq!(via.flags & irq::TIMER1, 0, "a one-shot interrupts once");
+    }
+
+    #[test]
+    fn pb7_goes_low_when_a_one_shot_starts_and_high_when_it_times_out() {
+        let mut via = Via::new();
+        via.write(ACR, 0x80); // PB7 is the timer output, one-shot
+        via.write(T1C_L, 5);
+        via.write(T1C_H, 0);
+        assert_eq!(via.read(ORB) & 0x80, 0, "low while the timer runs");
+        run(&mut via, 5);
+        assert_eq!(via.read(ORB) & 0x80, 0);
+        run(&mut via, 1);
+        assert_eq!(via.read(ORB) & 0x80, 0x80, "high again at the timeout");
+    }
+
+    #[test]
+    fn pb7_toggles_at_every_timeout_of_the_free_running_timer() {
+        let mut via = Via::new();
+        via.write(ACR, 0xC0); // PB7 output, free-running
+        via.write(T1C_L, 3);
+        via.write(T1C_H, 0);
+        assert_eq!(via.read(ORB) & 0x80, 0);
+        run(&mut via, 4);
+        assert_eq!(via.read(ORB) & 0x80, 0x80, "first timeout: high");
+        run(&mut via, 5); // a period is N + 2
+        assert_eq!(via.read(ORB) & 0x80, 0, "next: low");
+        run(&mut via, 5);
+        assert_eq!(via.read(ORB) & 0x80, 0x80);
+    }
+
+    #[test]
+    fn pb7_shows_the_timer_only_when_the_aux_control_register_asks_for_it() {
+        let mut via = Via::new();
+        via.input_b = 0x80;
+        via.write(DDRB, 0);
+        assert_eq!(via.read(ORB) & 0x80, 0x80, "an input pin, as normal");
+        via.write(ACR, 0x80);
+        via.write(T1C_L, 9);
+        via.write(T1C_H, 0);
+        assert_eq!(via.read(ORB) & 0x80, 0, "now the timer's output");
+        assert_eq!(via.read(ORB) & 0x7F, 0, "and the other pins are untouched");
+    }
+
+    #[test]
+    fn a_free_running_timer_reloads_from_the_latch_each_time() {
+        let mut via = Via::new();
+        via.write(ACR, 0x40);
+        via.write(T1C_L, 0x00);
+        via.write(T1C_H, 0x01); // 256
+        run(&mut via, 257);
+        assert_eq!(via.flags & irq::TIMER1, irq::TIMER1);
+        via.read(T1C_L);
+        run(&mut via, 258);
+        assert_eq!(
+            via.flags & irq::TIMER1,
+            irq::TIMER1,
+            "and again, one period later"
+        );
+    }
+
+    // ---- Timer 2 ---------------------------------------------------------------------------
+
+    #[test]
+    fn timer_2_counts_from_its_latch_low_byte_and_the_written_high_byte() {
+        let mut via = Via::new();
+        via.write(T2C_L, 0x10); // only the latch
+        assert_eq!(via.snapshot().timer2, 0xFFFF);
+        via.write(T2C_H, 0x00); // loads and starts
+        assert_eq!(via.snapshot().timer2, 0x0010);
+        run(&mut via, 16);
+        assert_eq!(via.flags & irq::TIMER2, 0);
+        run(&mut via, 1);
+        assert_eq!(
+            via.flags & irq::TIMER2,
+            irq::TIMER2,
+            "N + 1 cycles after the write"
+        );
+        via.read(T2C_L);
+        run(&mut via, 100);
+        assert_eq!(via.flags & irq::TIMER2, 0, "one-shot");
+        assert_ne!(via.read(T2C_H), 0, "the counter kept going down past zero");
+    }
+
+    #[test]
+    fn timer_2_pulse_counting_is_not_emulated_so_the_timer_just_stands_still() {
+        // Documenting a known limitation: with ACR bit 5 set the real chip counts
+        // pulses on PB6, which nothing drives here.
+        let mut via = Via::new();
+        via.write(ACR, 0x20);
+        via.write(T2C_L, 5);
+        via.write(T2C_H, 0);
+        run(&mut via, 100);
+        assert_eq!(via.snapshot().timer2, 5);
+        assert_eq!(via.flags & irq::TIMER2, 0);
+    }
 }

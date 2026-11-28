@@ -541,4 +541,138 @@ mod tests {
         fb.show_border = true;
         assert_eq!(fb.shown_size(), (FULL_WIDTH, FULL_HEIGHT));
     }
+
+    // ---- Every graphics mode, every pixel ---------------------------------------------------
+
+    /// What pixel (x, y) of a graphics screen should be, worked out directly from
+    /// the data sheet: the picture is `width` x `height` dots, each stretched to
+    /// fill the 256 x 192 screen; in two-colour modes a byte is eight dots, one
+    /// bit each, in four-colour modes four dots, two bits each, leftmost dot in
+    /// the highest bits; and rows follow each other in memory from $8000.
+    fn expected_pixel(
+        ram: &[u8],
+        (width, height, colours): (u32, u32, u32),
+        set: usize,
+        x: usize,
+        y: usize,
+    ) -> u8 {
+        let (width, height) = (width as usize, height as usize);
+        let bits_per_dot = if colours == 2 { 1 } else { 2 };
+        let dots_per_byte = 8 / bits_per_dot;
+        let (dot_x, dot_y) = (x / (256 / width), y / (192 / height));
+        let byte = ram[0x8000 + dot_y * (width / dots_per_byte) + dot_x / dots_per_byte];
+        let shift = 8 - bits_per_dot * (dot_x % dots_per_byte + 1);
+        let value = (byte >> shift) & ((1 << bits_per_dot) - 1);
+        match (colours, value) {
+            (2, 0) => BLACK,
+            (2, _) => COLOURS_BY_SET[set][0],
+            _ => COLOURS_BY_SET[set][value as usize],
+        }
+    }
+
+    /// 64K of RAM with an unpredictable (but repeatable) pattern in the screen.
+    fn noisy_ram() -> Vec<u8> {
+        let mut ram = vec![0u8; 0x10000];
+        let mut seed = 0x1234_5678u32;
+        for byte in &mut ram[0x8000..0x9800] {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            *byte = (seed >> 24) as u8;
+        }
+        ram
+    }
+
+    #[test]
+    fn every_graphics_mode_draws_every_pixel_as_the_data_sheet_says() {
+        let ram = noisy_ram();
+        let modes = [
+            (64, 64, 4),
+            (128, 64, 2),
+            (128, 64, 4),
+            (128, 96, 2),
+            (128, 96, 4),
+            (128, 192, 2),
+            (128, 192, 4),
+            (256, 192, 2),
+        ];
+        for mode in modes {
+            for colour_set in [false, true] {
+                let mut frame = Framebuffer::new();
+                let (width, height, colours) = mode;
+                for line in 0..HEIGHT {
+                    frame.render_line(
+                        line,
+                        &ram,
+                        VideoMode::Graphics {
+                            width,
+                            height,
+                            colours,
+                        },
+                        colour_set,
+                    );
+                }
+                for y in 0..HEIGHT {
+                    for x in 0..WIDTH {
+                        assert_eq!(
+                            frame.pixels[y * WIDTH + x],
+                            expected_pixel(&ram, mode, colour_set as usize, x, y),
+                            "{width}x{height}x{colours} set {colour_set} at ({x}, {y})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_64_by_64_four_colour_mode_clear_1a_stretches_each_dot_to_four_by_three_pixels() {
+        // The mode no test drew before: the lowest resolution.
+        let mut ram = vec![0u8; 0x10000];
+        ram[0x8000] = 0b00_01_10_11; // four dots: green, yellow, blue, red (set 0)
+        let mut frame = Framebuffer::new();
+        let mode = VideoMode::Graphics {
+            width: 64,
+            height: 64,
+            colours: 4,
+        };
+        for line in 0..HEIGHT {
+            frame.render_line(line, &ram, mode, false);
+        }
+        let row = |y: usize| &frame.pixels[y * WIDTH..y * WIDTH + 16];
+        let expected: Vec<u8> = [GREEN, YELLOW, BLUE, RED]
+            .into_iter()
+            .flat_map(|c| [c; 4])
+            .collect();
+        for y in 0..3 {
+            assert_eq!(row(y), expected, "scanline {y}: a dot is 3 scanlines tall");
+        }
+        assert_eq!(
+            row(3)[0],
+            GREEN,
+            "the next dot row starts at scanline 3, and the byte there is 0 = green"
+        );
+    }
+
+    #[test]
+    fn the_video_memory_of_each_graphics_mode_starts_at_8000() {
+        for (width, height, colours) in [(64, 64, 4), (128, 192, 2), (256, 192, 2)] {
+            let mut ram = vec![0u8; 0x10000];
+            ram[0x8000] = 0xFF;
+            ram[0x7FFF] = 0xFF; // just before the screen: must not appear
+            let mut frame = Framebuffer::new();
+            frame.render_line(
+                0,
+                &ram,
+                VideoMode::Graphics {
+                    width,
+                    height,
+                    colours,
+                },
+                false,
+            );
+            assert_ne!(
+                frame.pixels[0], BLACK,
+                "{width}x{height}x{colours}: the first byte is drawn"
+            );
+        }
+    }
 }

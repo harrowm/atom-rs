@@ -1660,4 +1660,267 @@ mod tests {
         let (_folder, mut mmc) = card_with_files();
         assert_eq!(command(&mut mmc, 0x48), status::BUSY);
     }
+
+    // ---- The EEPROM "packets" ----------------------------------------------------------------
+
+    /// Send an EEPROM packet (`ER` or `EW`, a start address and a count, then any
+    /// data to write) and give back the reply to `EXEC_PACKET`.
+    fn packet(mmc: &mut AtoMmc, kind: &[u8; 2], start: u8, count: u8, data: &[u8]) -> u8 {
+        command(mmc, command::INIT_WRITE);
+        for byte in [kind[0], kind[1], start, count]
+            .into_iter()
+            .chain(data.iter().copied())
+        {
+            mmc.write(WRITE_DATA, byte);
+        }
+        command(mmc, command::EXEC_PACKET)
+    }
+
+    #[test]
+    fn the_eeprom_can_be_written_and_read_back_by_packets() {
+        let (_folder, mut mmc) = card_with_files();
+        assert_eq!(packet(&mut mmc, b"EW", 0x10, 3, &[7, 8, 9]), status::OK);
+        assert_eq!(packet(&mut mmc, b"ER", 0x10, 3, &[]), status::OK);
+        assert_eq!(&fetch(&mut mmc, 3), &[7, 8, 9]);
+        // Neighbouring bytes were not disturbed.
+        assert_eq!(packet(&mut mmc, b"ER", 0x0F, 5, &[]), status::OK);
+        let bytes = fetch(&mut mmc, 5);
+        assert_eq!(&bytes[1..4], &[7, 8, 9]);
+        assert_ne!(bytes[0], 7);
+        assert_ne!(bytes[4], 9);
+    }
+
+    #[test]
+    fn the_configuration_byte_is_the_last_byte_of_the_first_256_of_the_eeprom() {
+        let (_folder, mut mmc) = card_with_files();
+        mmc.write(LATCH, 0x5A);
+        assert_eq!(command(&mut mmc, command::SET_CONFIG_BYTE), status::OK);
+        assert_eq!(packet(&mut mmc, b"ER", 0xFF, 1, &[]), status::OK);
+        assert_eq!(
+            fetch(&mut mmc, 1),
+            [0x5A],
+            "the packet sees what SET_CONFIG_BYTE stored"
+        );
+        assert_eq!(packet(&mut mmc, b"EW", 0xFF, 1, &[0xC3]), status::OK);
+        assert_eq!(
+            command(&mut mmc, command::GET_CONFIG_BYTE),
+            0xC3,
+            "and the other way"
+        );
+    }
+
+    #[test]
+    fn an_exec_packet_with_nothing_sent_says_there_was_no_data() {
+        let (_folder, mut mmc) = card_with_files();
+        assert_eq!(
+            command(&mut mmc, command::EXEC_PACKET),
+            status::COMPLETE | error::NO_DATA
+        );
+    }
+
+    #[test]
+    fn a_packet_of_an_unknown_kind_gets_no_answer() {
+        let (_folder, mut mmc) = card_with_files();
+        assert_eq!(
+            packet(&mut mmc, b"XY", 0, 1, &[]),
+            status::BUSY,
+            "the firmware never replies"
+        );
+    }
+
+    // ---- Commands that were never sent ---------------------------------------------------------
+
+    #[test]
+    fn the_remaining_utility_commands_answer() {
+        let (_folder, mut mmc) = card_with_files();
+        assert_eq!(command(&mut mmc, command::GET_BOOTLOADER_VERSION), 0);
+        mmc.write(LATCH, 0x33);
+        assert_eq!(command(&mut mmc, command::WRITE_PORT), status::OK);
+        assert_eq!(
+            command(&mut mmc, command::READ_AUX),
+            0,
+            "the register the command was written to"
+        );
+        assert_eq!(command(&mut mmc, command::SAVE_IMAGE_LIST), status::OK);
+        assert_eq!(
+            command(&mut mmc, 0x7F),
+            status::BUSY,
+            "a command it does not know stays busy"
+        );
+    }
+
+    #[test]
+    fn an_unused_register_does_nothing_with_or_without_a_card() {
+        let (_folder, mut mmc) = card_with_files();
+        let before = mmc.read(COMMAND);
+        mmc.write(0xB405, 0x99);
+        mmc.read(0xB406);
+        assert_eq!(mmc.read(COMMAND), before, "registers 4-7 are not connected");
+        let mut empty = AtoMmc::default();
+        empty.write(0xB405, 0x99);
+        empty.write(READ_DATA, 1);
+        assert_eq!(
+            empty.read(0xB407),
+            0xB4,
+            "still open bus: nothing is answering"
+        );
+    }
+
+    // ---- Random access files -----------------------------------------------------------------------
+
+    #[test]
+    fn a_random_access_file_is_created_if_missing_and_can_be_written_and_reopened() {
+        let (folder, mut mmc) = card_with_files();
+        // Any non-zero file number asks for "the next free one"; the reply says which.
+        let reply = open(
+            &mut mmc,
+            command::FILE_OPEN_RANDOM_ACCESS | (3 << 5),
+            "DATA",
+        );
+        assert_eq!(
+            reply,
+            status::COMPLETE | FILE_NUMBER_OFFSET | 1,
+            "the first free slot"
+        );
+        command(&mut mmc, command::INIT_WRITE);
+        for byte in [10u8, 20, 30, 40] {
+            mmc.write(WRITE_DATA, byte);
+        }
+        mmc.write(LATCH, 4);
+        assert_eq!(
+            command(&mut mmc, command::WRITE_BYTES | (1 << 2)),
+            status::COMPLETE
+        );
+        command(&mut mmc, command::FILE_CLOSE | (1 << 5));
+        assert_eq!(fs::read(folder.0.join("DATA")).unwrap(), [10, 20, 30, 40]);
+
+        // Opened again it is the same file (not truncated), readable and writable,
+        // and the closed slot is free to be given out again.
+        let reply = open(
+            &mut mmc,
+            command::FILE_OPEN_RANDOM_ACCESS | (1 << 5),
+            "DATA",
+        );
+        assert_eq!(reply, status::COMPLETE | FILE_NUMBER_OFFSET | 1);
+        mmc.write(LATCH, 4);
+        assert_eq!(
+            command(&mut mmc, command::READ_BYTES | (1 << 2)),
+            status::COMPLETE
+        );
+        assert_eq!(&fetch(&mut mmc, 4), &[10, 20, 30, 40]);
+    }
+
+    // ---- With no card, and bad input ----------------------------------------------------------------
+
+    #[test]
+    fn commands_that_need_a_card_say_the_object_is_invalid_if_it_has_gone() {
+        // `process_without_card` keeps these from arriving, but the card can also
+        // be taken away between commands; the commands answer sensibly either way.
+        for received in [
+            command::DIR_CWD,
+            command::DIR_MKDIR,
+            command::DIR_RMDIR,
+            command::RENAME,
+            command::FILE_DELETE,
+        ] {
+            let mut mmc = AtoMmc::default();
+            mmc.run_command(received);
+            assert_eq!(
+                mmc.data_port,
+                Some(status::COMPLETE | error::INVALID_OBJECT),
+                "command {received:02X}"
+            );
+        }
+        for received in [
+            command::FILE_OPEN_READ,
+            command::FILE_OPEN_WRITE,
+            command::FILE_GET_INFO,
+            command::FILE_SEEK,
+            command::READ_BYTES,
+            command::WRITE_BYTES,
+            command::DIR_OPEN,
+        ] {
+            let mut mmc = AtoMmc::default();
+            mmc.run_command(received);
+            assert_ne!(
+                mmc.data_port,
+                Some(status::OK),
+                "command {received:02X} must not succeed"
+            );
+            assert_ne!(
+                mmc.data_port,
+                Some(status::BUSY),
+                "command {received:02X} must answer"
+            );
+        }
+    }
+
+    #[test]
+    fn host_io_errors_become_fatfs_error_codes() {
+        use std::io::{Error, ErrorKind};
+        assert_eq!(
+            io_error_code(Error::from(ErrorKind::NotFound)),
+            error::NO_PATH
+        );
+        assert_eq!(
+            io_error_code(Error::from(ErrorKind::PermissionDenied)),
+            error::DENIED
+        );
+        assert_eq!(
+            io_error_code(Error::from(ErrorKind::AlreadyExists)),
+            error::EXISTS
+        );
+        assert_eq!(
+            io_error_code(Error::other("anything else")),
+            error::DISK_ERROR
+        );
+    }
+
+    #[test]
+    fn eight_dot_three_names_are_checked_exactly() {
+        for good in ["A", "ABCDEFGH", "A.B", "ABCDEFGH.TXT", "NAME.A", "lower"] {
+            assert!(validate_name(good).is_ok(), "{good}");
+            assert!(is_short_name(good), "{good}");
+        }
+        for bad in [
+            "",
+            "ABCDEFGHI",
+            "A.TXTX",
+            ".TXT",
+            "A.B.C",
+            "naïve",
+            "NAME.ÀBC",
+        ] {
+            assert!(validate_name(bad).is_err(), "{bad:?}");
+        }
+        for not_short in ["ABCDEFGHI", "A.TXTX", "naïve", "ABCDEFGHI.TXT"] {
+            assert!(!is_short_name(not_short), "{not_short:?}");
+        }
+        assert_eq!(
+            validate_name("NAME.").unwrap(),
+            "NAME",
+            "a dangling dot is dropped"
+        );
+        assert_eq!(validate_name("A.B").unwrap(), "A.B");
+    }
+
+    #[test]
+    fn a_bad_name_is_refused_with_the_right_error_when_creating_or_changing_directory() {
+        let (_folder, mut mmc) = card_with_files();
+        assert_eq!(
+            open(&mut mmc, command::FILE_OPEN_WRITE, "WAYTOOLONGNAME"),
+            status::COMPLETE | error::INVALID_NAME
+        );
+        send_string(&mut mmc, "NOSUCH");
+        assert_eq!(
+            command(&mut mmc, command::DIR_CWD),
+            status::COMPLETE | error::NO_PATH
+        );
+        send_string(&mut mmc, "MENU"); // a file, not a directory
+        assert_ne!(
+            command(&mut mmc, command::DIR_CWD),
+            status::COMPLETE,
+            "cannot cd into a file"
+        );
+    }
 }

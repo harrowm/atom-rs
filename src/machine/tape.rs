@@ -831,4 +831,259 @@ mod tests {
         assert_eq!(from_csw.catalogue(), tape.catalogue());
         assert!(TapeImage::from_file(b"neither").is_err());
     }
+
+    // ---- UEF chunks, one by one, and damaged files -----------------------------------------------
+
+    fn chunks_of(file: &[u8]) -> Vec<TapeChunk> {
+        TapeImage::from_uef(file).unwrap().chunks
+    }
+
+    #[test]
+    fn a_carrier_with_a_dummy_byte_is_the_carrier_the_byte_and_the_carrier() {
+        let body = [100u16.to_le_bytes(), 40u16.to_le_bytes()].concat();
+        assert_eq!(
+            chunks_of(&uef(&[(0x0111, body)])),
+            vec![
+                TapeChunk::Carrier { cycles: 100 },
+                TapeChunk::Byte(0xAA),
+                TapeChunk::Carrier { cycles: 40 },
+            ]
+        );
+    }
+
+    #[test]
+    fn gaps_are_converted_from_the_uefs_units_to_player_steps() {
+        // Integer gap: units of 1/600 second; the player runs at 4800 steps a second.
+        let integer = chunks_of(&uef(&[(0x0112, 600u16.to_le_bytes().to_vec())]));
+        assert_eq!(
+            integer,
+            vec![TapeChunk::Gap { steps: 4800 }],
+            "600 units is one second"
+        );
+        // Floating point gap in seconds.
+        let float = chunks_of(&uef(&[(0x0116, 0.5f32.to_le_bytes().to_vec())]));
+        assert_eq!(float, vec![TapeChunk::Gap { steps: 2400 }]);
+    }
+
+    #[test]
+    fn chunks_with_bodies_too_short_for_what_they_hold_are_skipped_not_fatal() {
+        for (id, body) in [
+            (0x0110u16, vec![1u8]),
+            (0x0111, vec![1, 0, 2]),
+            (0x0112, vec![9]),
+            (0x0116, vec![0, 0, 0]),
+            (0x0110, vec![]),
+        ] {
+            assert!(chunks_of(&uef(&[(id, body)])).is_empty(), "chunk {id:04X}");
+        }
+    }
+
+    #[test]
+    fn chunks_of_kinds_the_atom_does_not_use_are_ignored() {
+        let file = uef(&[
+            (0x0000, b"an origin message".to_vec()),
+            (0x0100, vec![1, 2]),
+            (0x0104, vec![9; 5]),
+            (0x0117, vec![3, 3]),
+            (0x0100, vec![3]),
+        ]);
+        let bytes: Vec<u8> = chunks_of(&file)
+            .into_iter()
+            .filter_map(|c| {
+                if let TapeChunk::Byte(b) = c {
+                    Some(b)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(bytes, [1, 2, 3], "only the data chunks count, in order");
+    }
+
+    #[test]
+    fn a_chunk_that_claims_more_bytes_than_the_file_has_is_an_error() {
+        let mut file = uef(&[(0x0100, vec![1, 2, 3])]);
+        file.truncate(file.len() - 2);
+        assert!(
+            TapeImage::from_uef(&file)
+                .unwrap_err()
+                .contains("past the end")
+        );
+        // A length that would overflow a 32-bit address on a small machine.
+        let mut huge = b"UEF File!\0\x0A\x00".to_vec();
+        huge.extend(0x0100u16.to_le_bytes());
+        huge.extend(u32::MAX.to_le_bytes());
+        assert!(TapeImage::from_uef(&huge).is_err());
+    }
+
+    #[test]
+    fn bytes_left_over_after_the_last_chunk_header_are_ignored() {
+        let mut file = uef(&[(0x0100, vec![7])]);
+        file.extend([0x00, 0x01, 0x05]); // the start of another chunk header, cut off
+        assert_eq!(chunks_of(&file), vec![TapeChunk::Byte(7)]);
+    }
+
+    #[test]
+    fn a_header_alone_is_an_empty_tape_and_a_short_or_wrong_one_is_refused() {
+        assert!(chunks_of(b"UEF File!\0\x0A\x00").is_empty());
+        assert!(
+            TapeImage::from_uef(b"UEF File!\0").is_err(),
+            "no version bytes"
+        );
+        assert!(TapeImage::from_uef(b"").is_err());
+        assert!(TapeImage::from_uef(b"UEF File?\0\x0A\x00").is_err());
+    }
+
+    #[test]
+    fn a_damaged_gzip_file_is_refused_with_a_message_about_decompressing() {
+        let good = {
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+            encoder.write_all(&uef(&[(0x0100, vec![1, 2, 3])])).unwrap();
+            encoder.finish().unwrap()
+        };
+        assert_eq!(
+            chunks_of(&good),
+            vec![TapeChunk::Byte(1), TapeChunk::Byte(2), TapeChunk::Byte(3)]
+        );
+        let mut cut = good.clone();
+        cut.truncate(cut.len() / 2);
+        assert!(
+            TapeImage::from_uef(&cut)
+                .unwrap_err()
+                .contains("cannot decompress")
+        );
+        assert!(TapeImage::from_uef(&[0x1F, 0x8B, 0, 0, 0]).is_err());
+    }
+
+    #[test]
+    fn a_long_carrier_is_cut_to_what_a_uef_chunk_can_hold_when_written() {
+        let tape = TapeImage {
+            chunks: vec![TapeChunk::Carrier { cycles: 100_000 }],
+        };
+        let back = TapeImage::from_uef(&tape.to_uef()).unwrap();
+        assert_eq!(back.chunks, vec![TapeChunk::Carrier { cycles: 0xFFFF }]);
+    }
+
+    #[test]
+    fn data_bytes_split_by_other_chunks_are_written_in_separate_runs_and_read_back_in_order() {
+        let tape = TapeImage {
+            chunks: vec![
+                TapeChunk::Byte(1),
+                TapeChunk::Byte(2),
+                TapeChunk::Gap { steps: 4800 },
+                TapeChunk::Byte(3),
+                TapeChunk::Carrier { cycles: 50 },
+            ],
+        };
+        assert_eq!(
+            TapeImage::from_uef(&tape.to_uef()).unwrap().chunks,
+            tape.chunks
+        );
+    }
+
+    // ---- The player's state ------------------------------------------------------------------------
+
+    fn two_bytes() -> TapeImage {
+        TapeImage {
+            chunks: vec![TapeChunk::Byte(0x41), TapeChunk::Byte(0x42)],
+        }
+    }
+
+    #[test]
+    fn insert_eject_and_rewind_manage_the_tape_and_the_play_button() {
+        let mut player = Tape::new();
+        assert!(!player.has_tape());
+        assert!(player.image().is_none());
+        assert_eq!(player.progress(), 0.0, "no tape: no progress");
+        player.insert(two_bytes());
+        assert!(player.has_tape());
+        assert_eq!(player.image().unwrap().chunks.len(), 2);
+        player.playing = true;
+        for _ in 0..20 {
+            player.step();
+        }
+        assert_eq!(player.progress(), 0.5, "the first byte has been started");
+        player.rewind();
+        assert_eq!(player.progress(), 0.0);
+        assert!(!player.playing, "rewinding lets the button up");
+        player.eject();
+        assert!(!player.has_tape());
+        assert_eq!(player.progress(), 0.0);
+    }
+
+    #[test]
+    fn a_tape_of_nothing_has_no_progress_and_the_end_of_the_tape_lifts_the_play_button() {
+        let mut player = Tape::new();
+        player.insert(TapeImage::default());
+        assert_eq!(player.progress(), 0.0);
+        player.playing = true;
+        assert!(!player.step(), "the level is low at the end");
+        assert!(!player.playing, "the recorder stops itself");
+        let mut player = Tape::new();
+        player.insert(two_bytes());
+        player.playing = true;
+        for _ in 0..(2 * 10 * 16 + 5) {
+            player.step();
+        }
+        assert!(!player.playing, "end of the tape");
+        assert_eq!(player.progress(), 1.0);
+    }
+
+    #[test]
+    fn zero_length_carriers_and_gaps_are_skipped_straight_over() {
+        let mut player = Tape::new();
+        player.insert(TapeImage {
+            chunks: vec![
+                TapeChunk::Carrier { cycles: 0 },
+                TapeChunk::Gap { steps: 0 },
+                TapeChunk::Carrier { cycles: 1 },
+            ],
+        });
+        player.playing = true;
+        let levels: Vec<bool> = (0..2).map(|_| player.step()).collect();
+        assert_eq!(levels, [true, false], "one cycle of carrier: two steps");
+    }
+
+    #[test]
+    fn recording_only_keeps_samples_while_the_record_button_is_down_and_counts_the_time() {
+        let mut player = Tape::new();
+        player.record(true);
+        assert_eq!(
+            player.recorded_seconds(),
+            0.0,
+            "not recording: nothing kept"
+        );
+        player.recording = true;
+        for n in 0..4800 {
+            player.record(n % 2 == 0);
+        }
+        assert!(
+            (player.recorded_seconds() - 1.0).abs() < 1e-9,
+            "4800 steps is a second"
+        );
+        let image = player.finish_recording();
+        assert!(!player.recording, "finishing lets the button up");
+        assert_eq!(player.recorded_seconds(), 0.0, "and forgets the samples");
+        // A long square wave is a leader tone: cut to a realistic length.
+        assert!(matches!(
+            image.chunks.first(),
+            Some(TapeChunk::Carrier { .. })
+        ));
+    }
+
+    #[test]
+    fn decoding_a_recording_of_silence_or_nonsense_never_panics() {
+        for levels in [
+            vec![],
+            vec![true],
+            vec![false; 1000],
+            vec![true, false],
+            (0..1000).map(|n| n % 7 < 3).collect::<Vec<_>>(),
+            (0..1000).map(|n| n % 2 == 0).collect::<Vec<_>>(),
+            (0..777).map(|n| (n * n) % 5 < 2).collect::<Vec<_>>(),
+        ] {
+            let _ = decode_recording(&levels);
+        }
+    }
 }

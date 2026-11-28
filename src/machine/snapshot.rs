@@ -191,4 +191,88 @@ mod tests {
         assert!(atom.load_state(b"definitely not a state").is_err());
         assert_eq!(atom.cpu.regs.a, 0x42);
     }
+
+    // ---- Damaged and old saved states ----------------------------------------------------------------
+
+    /// A saved state edited as JSON: gunzip, change, gzip again.
+    fn edited_state(atom: &Atom, edit: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {
+        let mut json = Vec::new();
+        flate2::read::GzDecoder::new(&atom.save_state().unwrap()[..])
+            .read_to_end(&mut json)
+            .unwrap();
+        let mut value: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        edit(&mut value);
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder
+            .write_all(&serde_json::to_vec(&value).unwrap())
+            .unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn a_state_from_another_version_is_refused_and_the_machine_left_alone() {
+        let mut atom = Atom::new();
+        let state = edited_state(&atom, |v| v["version"] = 99.into());
+        atom.cpu.regs.a = 0x42;
+        let message = atom.load_state(&state).unwrap_err();
+        assert!(message.contains("version 99"), "{message}");
+        assert_eq!(atom.cpu.regs.a, 0x42);
+    }
+
+    #[test]
+    fn a_state_with_the_wrong_amount_of_ram_is_refused_and_the_machine_left_alone() {
+        let mut atom = Atom::new();
+        let state = edited_state(&atom, |v| v["ram"] = serde_json::json!([1, 2, 3]));
+        atom.cpu.regs.a = 0x42;
+        assert!(
+            atom.load_state(&state)
+                .unwrap_err()
+                .contains("wrong amount of RAM")
+        );
+        assert_eq!(atom.cpu.regs.a, 0x42);
+    }
+
+    #[test]
+    fn a_state_that_is_gzip_but_not_json_is_called_damaged() {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(b"{ this is not json").unwrap();
+        let junk = encoder.finish().unwrap();
+        let mut atom = Atom::new();
+        assert!(atom.load_state(&junk).unwrap_err().contains("damaged"));
+        // And one with a missing field.
+        let state = edited_state(&atom, |v| {
+            v.as_object_mut().unwrap().remove("cpu");
+        });
+        assert!(atom.load_state(&state).unwrap_err().contains("damaged"));
+    }
+
+    #[test]
+    fn a_cut_off_state_is_refused() {
+        let atom = Atom::new();
+        let state = atom.save_state().unwrap();
+        let mut other = Atom::new();
+        assert!(other.load_state(&state[..state.len() / 2]).is_err());
+        assert!(other.load_state(&[]).is_err());
+        assert!(other.load_state(&state[..10]).is_err());
+    }
+
+    #[test]
+    fn a_state_saved_before_video_ram_and_ram_size_were_recorded_still_loads() {
+        let mut atom = Atom::new();
+        atom.bus.memory.set_video_ram_kb(3);
+        let old = edited_state(&atom, |v| {
+            let fields = v.as_object_mut().unwrap();
+            fields.remove("video_ram_kb");
+            fields.remove("ram_preset");
+            fields.remove("ramrom_registers");
+        });
+        let mut other = Atom::new();
+        other.bus.memory.set_video_ram_kb(2);
+        other.load_state(&old).unwrap();
+        assert_eq!(
+            other.bus.memory.video_ram_kb(),
+            crate::machine::memory::MAX_VIDEO_RAM_KB,
+            "an old state means the full video RAM"
+        );
+    }
 }

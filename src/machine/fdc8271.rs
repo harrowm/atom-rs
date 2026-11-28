@@ -658,4 +658,314 @@ mod tests {
             .unwrap();
         assert!(sector.iter().all(|&b| b == 0xE5));
     }
+
+    // ---- Registers and reset ----------------------------------------------------------------
+
+    #[test]
+    fn unused_registers_read_zero_and_ignore_writes() {
+        let mut fdc = fdc_with_disk();
+        for register in [2, 3, 5, 6, 7] {
+            assert_eq!(fdc.read(register), 0, "register {register}");
+        }
+        for register in [3, 5, 6, 7] {
+            fdc.write(register, 0xFF);
+        }
+        assert!(!fdc.is_busy());
+        assert_eq!(fdc.read(0), 0);
+    }
+
+    #[test]
+    fn writing_the_reset_register_stops_a_command_in_progress() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::SEEK, &[40]);
+        assert!(fdc.is_busy());
+        fdc.write(2, 1);
+        assert!(!fdc.is_busy());
+        assert!(!fdc.nmi_asserted());
+        // A write of 0 to the reset register is not a reset.
+        command(&mut fdc, command::SEEK, &[10]);
+        fdc.write(2, 0);
+        assert!(fdc.is_busy());
+    }
+
+    #[test]
+    fn a_new_command_is_ignored_while_one_is_running() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::SEEK, &[30]);
+        command(&mut fdc, command::SEEK, &[5]); // ignored: the first is still running
+        run_until(&mut fdc, |f| f.nmi_asserted());
+        fdc.read(1);
+        assert_eq!(fdc.current_track(0), 30);
+    }
+
+    #[test]
+    fn extra_parameters_after_the_last_one_are_ignored() {
+        let mut fdc = fdc_with_disk();
+        command(
+            &mut fdc,
+            command::SEEK,
+            &[7, 99, 99, 99, 99, 99, 99, 99, 99, 99],
+        );
+        run_until(&mut fdc, |f| f.nmi_asserted());
+        fdc.read(1);
+        assert_eq!(fdc.current_track(0), 7);
+    }
+
+    #[test]
+    fn a_command_byte_that_means_nothing_reports_drive_not_ready_at_once() {
+        let mut fdc = fdc_with_disk();
+        fdc.write(0, 0x00);
+        assert_eq!(fdc.read(0) & status::RESULT_READY, status::RESULT_READY);
+        assert_eq!(fdc.read(1), result::DRIVE_NOT_READY);
+    }
+
+    // ---- Special registers --------------------------------------------------------------------
+
+    fn write_special(fdc: &mut Fdc8271, register: u8, value: u8) {
+        command(fdc, command::WRITE_SPECIAL, &[register, value]);
+    }
+
+    fn read_special(fdc: &mut Fdc8271, register: u8) -> u8 {
+        command(fdc, command::READ_SPECIAL, &[register]);
+        assert_eq!(
+            fdc.status_byte() & status::RESULT_READY,
+            status::RESULT_READY
+        );
+        fdc.read(1)
+    }
+
+    #[test]
+    fn the_track_registers_and_drive_output_can_be_written_and_read_back() {
+        let mut fdc = fdc_with_disk();
+        write_special(&mut fdc, special::DRIVE0_TRACK, 12);
+        write_special(&mut fdc, special::DRIVE1_TRACK, 34);
+        write_special(&mut fdc, special::DRIVE_OUTPUT, 0x20);
+        assert_eq!(fdc.current_track(0), 12);
+        assert_eq!(fdc.current_track(1), 34);
+        assert_eq!(read_special(&mut fdc, special::DRIVE0_TRACK), 12);
+        assert_eq!(read_special(&mut fdc, special::DRIVE1_TRACK), 34);
+        assert_eq!(read_special(&mut fdc, special::DRIVE_OUTPUT), 0x20);
+        assert_eq!(read_special(&mut fdc, special::SCAN_COUNT), 0);
+        write_special(&mut fdc, special::MODE, 0xC1); // accepted, with no effect to see
+        assert!(!fdc.is_busy());
+    }
+
+    #[test]
+    fn an_unknown_special_register_is_refused_for_both_reading_and_writing() {
+        let mut fdc = fdc_with_disk();
+        write_special(&mut fdc, 0x7E, 1);
+        assert_eq!(fdc.status_byte(), status::DONE);
+        assert_eq!(fdc.read(1), result::SECTOR_NOT_FOUND);
+        command(&mut fdc, command::READ_SPECIAL, &[0x7E]);
+        assert_eq!(fdc.status_byte(), status::DONE);
+        assert_eq!(fdc.read(1), result::SECTOR_NOT_FOUND);
+    }
+
+    #[test]
+    fn specify_takes_four_parameters_and_completes_without_a_result() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::SPECIFY, &[13, 4, 5, 6]);
+        assert!(!fdc.is_busy());
+        assert_eq!(fdc.status_byte(), 0);
+        command(&mut fdc, command::SPECIFY, &[13, 4]); // not all given yet
+        assert!(fdc.is_busy());
+    }
+
+    // ---- More commands ----------------------------------------------------------------------------
+
+    #[test]
+    fn read_data_and_deleted_data_is_read_data() {
+        let mut fdc = fdc_with_disk();
+        fdc.drives[0]
+            .as_mut()
+            .unwrap()
+            .write_sector(2, 0, 4, &[0x5A; SECTOR_SIZE]);
+        command(&mut fdc, 0x17, &[2, 4, 1]); // the command code for "read data and deleted data"
+        let mut count = 0;
+        loop {
+            run_until(&mut fdc, |f| f.nmi_asserted());
+            if fdc.status_byte() & status::DATA_REQUEST == 0 {
+                break;
+            }
+            assert_eq!(fdc.read(4), 0x5A);
+            count += 1;
+        }
+        assert_eq!(count, SECTOR_SIZE);
+    }
+
+    #[test]
+    fn verify_checks_the_sector_but_hands_over_no_data() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::VERIFY, &[1, 2, 1]);
+        let mut data_requested = false;
+        for _ in 0..2_000_000 {
+            data_requested |= fdc.status_byte() & status::DATA_REQUEST != 0;
+            if fdc.status_byte() == status::DONE {
+                break;
+            }
+            fdc.tick();
+        }
+        assert_eq!(fdc.status_byte(), status::DONE);
+        assert!(!data_requested, "nothing for the CPU to fetch");
+        assert_eq!(fdc.read(1), result::OK);
+        // And a sector that is not there fails.
+        command(&mut fdc, command::VERIFY, &[200, 0, 1]);
+        run_until(&mut fdc, |f| f.status_byte() == status::DONE);
+        assert_eq!(fdc.read(1), result::SECTOR_NOT_FOUND);
+    }
+
+    #[test]
+    fn read_id_gives_the_sectors_id_field() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::READ_ID, &[6, 3, 1]);
+        let mut id = Vec::new();
+        loop {
+            run_until(&mut fdc, |f| f.nmi_asserted());
+            if fdc.status_byte() & status::DATA_REQUEST == 0 {
+                break;
+            }
+            id.push(fdc.read(4));
+        }
+        assert_eq!(
+            id,
+            [6, 0, 3, 1],
+            "track, side, sector, and 1 for 256-byte sectors"
+        );
+    }
+
+    #[test]
+    fn format_clears_the_whole_track_to_the_filler_byte_and_leaves_the_others_alone() {
+        let mut fdc = fdc_with_disk();
+        let disk = fdc.drives[0].as_mut().unwrap();
+        disk.write_sector(4, 0, 0, &[0x11; SECTOR_SIZE]);
+        disk.write_sector(5, 0, 0, &[0x22; SECTOR_SIZE]);
+        // Format track 4: the CPU supplies a 4-byte ID for each of the 10 sectors.
+        command(&mut fdc, command::FORMAT, &[4, 0, 10, 0, 0]);
+        for _ in 0..40 {
+            run_until(&mut fdc, |f| f.nmi_asserted());
+            fdc.write(4, 0);
+        }
+        run_until(&mut fdc, |f| f.status_byte() == status::DONE);
+        assert_eq!(fdc.read(1), result::OK);
+        let disk = fdc.drives[0].as_ref().unwrap();
+        assert!(
+            disk.read_sector(4, 0, 0)
+                .unwrap()
+                .iter()
+                .all(|&b| b == 0xE5)
+        );
+        assert!(
+            disk.read_sector(4, 0, 9)
+                .unwrap()
+                .iter()
+                .all(|&b| b == 0xE5)
+        );
+        assert!(
+            disk.read_sector(5, 0, 0)
+                .unwrap()
+                .iter()
+                .all(|&b| b == 0x22),
+            "track 5 untouched"
+        );
+    }
+
+    #[test]
+    fn formatting_a_write_protected_disk_is_refused() {
+        let mut fdc = fdc_with_disk();
+        fdc.drives[0].as_mut().unwrap().write_protected = true;
+        command(&mut fdc, command::FORMAT, &[0, 0, 10, 0, 0]);
+        run_until(&mut fdc, |f| f.status_byte() == status::DONE);
+        assert_eq!(fdc.read(1), result::WRITE_PROTECTED);
+    }
+
+    #[test]
+    fn a_multi_sector_write_goes_to_consecutive_sectors() {
+        let mut fdc = fdc_with_disk();
+        command(&mut fdc, command::WRITE_DATA, &[1, 3, 2]);
+        for i in 0..2 * SECTOR_SIZE {
+            run_until(&mut fdc, |f| f.nmi_asserted());
+            fdc.write(4, if i < SECTOR_SIZE { 0xAA } else { 0xBB });
+        }
+        run_until(&mut fdc, |f| f.status_byte() == status::DONE);
+        let disk = fdc.drives[0].as_ref().unwrap();
+        assert!(
+            disk.read_sector(1, 0, 3)
+                .unwrap()
+                .iter()
+                .all(|&b| b == 0xAA)
+        );
+        assert!(
+            disk.read_sector(1, 0, 4)
+                .unwrap()
+                .iter()
+                .all(|&b| b == 0xBB)
+        );
+        assert!(disk.read_sector(1, 0, 5).unwrap().iter().all(|&b| b == 0));
+    }
+
+    // ---- The second drive and the second side -----------------------------------------------------
+
+    #[test]
+    fn drive_1_is_selected_by_bit_7_of_the_command_byte() {
+        let mut fdc = fdc_with_disk(); // a disk in drive 0 only
+        fdc.drives[1] = Some(DiskImage::blank_80_track(1));
+        fdc.drives[1]
+            .as_mut()
+            .unwrap()
+            .write_sector(0, 0, 0, &[0x77; SECTOR_SIZE]);
+        fdc.write(0, command::READ_DATA | 0x80);
+        for parameter in [0, 0, 1] {
+            fdc.write(1, parameter);
+        }
+        run_until(&mut fdc, |f| f.nmi_asserted());
+        assert_eq!(fdc.read(4), 0x77, "from drive 1, not drive 0");
+    }
+
+    #[test]
+    fn drive_status_shows_which_drives_have_a_disk_and_which_were_asked_about() {
+        let mut fdc = fdc_with_disk();
+        fdc.drives[1] = Some(DiskImage::blank_80_track(1));
+        fdc.write(0, command::READ_DRIVE_STATUS | 0xC0); // ask about both drives
+        let both = fdc.read(1);
+        assert_eq!((both & 0x04, both & 0x40), (0x04, 0x40), "both ready");
+        fdc.drives[1] = None;
+        fdc.write(0, command::READ_DRIVE_STATUS | 0xC0);
+        let one = fdc.read(1);
+        assert_eq!((one & 0x04, one & 0x40), (0x04, 0), "drive 1 has no disk");
+        fdc.write(0, command::READ_DRIVE_STATUS | 0x80); // asked about drive 1 only
+        assert_eq!(
+            fdc.read(1) & 0x04,
+            0,
+            "drive 0 not asked about, so not reported"
+        );
+    }
+
+    #[test]
+    fn the_side_bit_of_the_drive_output_chooses_which_side_of_a_double_sided_disk_is_read() {
+        let mut fdc = Fdc8271::new();
+        let mut disk = DiskImage::blank_80_track(2);
+        disk.write_sector(3, 0, 1, &[0x01; SECTOR_SIZE]);
+        disk.write_sector(3, 1, 1, &[0x02; SECTOR_SIZE]);
+        fdc.drives[0] = Some(disk);
+        let first_byte = |fdc: &mut Fdc8271| {
+            command(fdc, command::READ_DATA, &[3, 1, 1]);
+            run_until(fdc, |f| f.nmi_asserted());
+            let byte = fdc.read(4);
+            run_until(fdc, |f| f.status_byte() == status::DONE || f.nmi_asserted());
+            fdc.write(2, 1); // reset to drop the rest of the transfer
+            byte
+        };
+        write_special(&mut fdc, special::DRIVE_OUTPUT, 0x00);
+        assert_eq!(first_byte(&mut fdc), 0x01, "side 0");
+        write_special(&mut fdc, special::DRIVE_OUTPUT, 0x20);
+        assert_eq!(first_byte(&mut fdc), 0x02, "side 1");
+    }
+
+    #[test]
+    fn a_default_controller_is_the_same_as_a_new_one() {
+        let mut fdc = Fdc8271::default();
+        assert!(!fdc.is_busy());
+        assert_eq!(fdc.read(0), 0);
+        assert_eq!(SECTORS, SECTORS_PER_TRACK);
+    }
 }
