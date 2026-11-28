@@ -722,12 +722,12 @@ sources. The character font was a copy of Atomulator's table; it is now read
 from a photograph of the ROM itself (see below), which gives the same table.
 
 The test suites downloaded by `scripts/fetch_tests.sh` are not part of this
-repository and keep their own licences. Nor is the die photograph of the 6847's
-character ROM (CC BY-SA 4.0, by Robcfg on Wikimedia Commons) that
-`scripts/fetch_font_source.sh` downloads: the character font in
-`src/machine/font.rs` is read from it by a program and checked against it by a
-test. The font used to be a copy of Atomulator's table; the two are identical,
-as they describe the same ROM.
+repository and keep their own licences.
+
+The character font in `src/machine/font.rs` was read from the die photograph of
+the 6847's character ROM in Wikipedia's article on the Motorola 6847 (by Robcfg,
+CC BY-SA 4.0; the photograph is not part of this repository). It used to be a
+copy of Atomulator's table; the two are identical, as they describe the same ROM.
 
 ### The ROMs
 
