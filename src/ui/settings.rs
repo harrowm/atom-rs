@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use atom_rs::machine::atom::Machine;
-use atom_rs::machine::memory::{MAX_VIDEO_RAM_KB, RamPreset};
+use atom_rs::machine::memory::{MAX_VIDEO_RAM_KB, RamPreset, SidAddress};
 use atom_rs::machine::sid::SidModel;
 
 /// The user's home folder: `HOME` (macOS and Linux), or `USERPROFILE`, which
@@ -43,6 +43,7 @@ pub struct Settings {
     pub show_border: bool,
     pub snow: bool,
     pub sid_fitted: bool,
+    pub sid_address: SidAddress,
     pub sid_model: SidModel,
     pub volume: f32,
     pub muted: bool,
@@ -62,6 +63,7 @@ impl Default for Settings {
             show_border: true,
             snow: false,
             sid_fitted: true,
+            sid_address: SidAddress::default(),
             sid_model: SidModel::default(),
             volume: 0.2,
             muted: false,
@@ -143,6 +145,7 @@ mod tests {
             show_border: false,
             snow: true,
             sid_fitted: true,
+            sid_address: SidAddress::NineFc0,
             sid_model: SidModel::Mos8580,
             volume: 0.7,
             muted: true,
@@ -181,6 +184,7 @@ mod tests {
         assert_eq!(atom.bus.memory.ram_preset(), defaults.ram_preset);
         assert_eq!(atom.bus.memory.video_ram_kb(), defaults.video_ram_kb);
         assert_eq!(atom.bus.memory.sid_fitted, defaults.sid_fitted);
+        assert_eq!(atom.bus.memory.sid_address, defaults.sid_address);
         assert_eq!(atom.bus.sid.model(), defaults.sid_model);
         assert_eq!(atom.bus.snow, defaults.snow);
         assert_eq!(atom.bus.framebuffer.show_border, defaults.show_border);

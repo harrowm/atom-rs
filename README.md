@@ -515,7 +515,8 @@ sound card's rate. Sound plays at normal speed and slower; above about 1x it
 is muted rather than squealing.
 
 **SID music.** A SID sound card (the Commodore 64's sound chip, which several
-add-on cards put in the Atom) is emulated at `BDC0-BDDF`, clocked at the Atom's
+add-on cards put in the Atom) is emulated at `BDC0-BDDF` (or at `9FC0-9FDF`,
+see below), clocked at the Atom's
 1 MHz, and mixed in with the speaker. The chip itself is the
 [`sidera`](https://crates.io/crates/sidera) crate; the rest (the memory map,
 the clock, the mixing) is in `src/machine/sid.rs`. The archive's `SID` folder
@@ -526,7 +527,16 @@ cargo run --release -- --archive --run '*CWD ASA/SID/ATMSID1\n*RUN SIDMENU\n'
 ```
 
 then press **A** or **Z** to choose a tune and **Space** to play it. There is a
-**Hardware > SID sound card** switch (and **SID model**: the original 6581 or the later 8580, which sound different) in the menu. When a tune plays it costs about
+**Hardware > SID sound card** switch (and **SID model**: the original 6581 or the later 8580, which sound different) in the menu.
+
+**Two addresses.** The archive has two copies of its SID tunes: `ASA/SID/ATOMSID`
+(and `ATMSID1` to `19`) are written for a card at `BDC0-BDDF`, which is the
+default, and `ASA/SID/DAVESID` is written for a card at `9FC0-9FDF`, the other
+position the archive's own manual page for the SID lists. Each set is silent
+with the card at the other address, so choose **Hardware > SID address** to
+match the tunes you are playing (the choice is remembered). At `9FC0` the card
+sits in the top of the video RAM space and hides the 32 bytes of video RAM
+there, which the screen never uses. When a tune plays it costs about
 half the emulator's speed; when nothing uses the SID it costs nothing. Things to
 know: a saved state does not include the SID (it restarts silent), and the chip
 is stepped once per audio sample, so a register write takes effect up to about

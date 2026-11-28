@@ -23,7 +23,7 @@ use atom_rs::machine::debug_session::DebugSession;
 use atom_rs::machine::disk::DiskImage;
 use atom_rs::machine::joystick::Joystick;
 use atom_rs::machine::keyboard::find_key;
-use atom_rs::machine::memory::{GDOS_BANKS, MAX_VIDEO_RAM_KB, RamPreset, RomSlot};
+use atom_rs::machine::memory::{GDOS_BANKS, MAX_VIDEO_RAM_KB, RamPreset, RomSlot, SidAddress};
 use atom_rs::machine::sid::SidModel;
 use atom_rs::machine::tape::TapeImage;
 use atom_rs::machine::typist::Typist;
@@ -200,6 +200,7 @@ impl AtomApp {
             show_border: bus.framebuffer.show_border,
             snow: bus.snow,
             sid_fitted: bus.memory.sid_fitted,
+            sid_address: bus.memory.sid_address,
             sid_model: bus.sid.model(),
             volume: self.volume,
             muted: self.muted,
@@ -232,6 +233,7 @@ impl AtomApp {
         bus.snow = settings.snow;
         bus.framebuffer.show_border = settings.show_border;
         bus.memory.sid_fitted = settings.sid_fitted;
+        bus.memory.sid_address = settings.sid_address;
         bus.sid.set_model(settings.sid_model);
         self.colour_board = settings.colour_board;
         bus.framebuffer.monochrome = !settings.colour_board;
@@ -1194,11 +1196,19 @@ impl AtomApp {
                     .on_hover_text(
                         "Flicker from the CPU and the 6847 sharing video RAM. An approximation.",
                     );
-                ui.checkbox(
-                    &mut self.atom.bus.memory.sid_fitted,
-                    "SID sound card (at BDC0)",
-                );
+                ui.checkbox(&mut self.atom.bus.memory.sid_fitted, "SID sound card");
                 ui.add_enabled_ui(self.atom.bus.memory.sid_fitted, |ui| {
+                    ui.menu_button("SID address", |ui| {
+                        ui.label("Software is written for one or the other.");
+                        for address in SidAddress::ALL {
+                            let current = self.atom.bus.memory.sid_address;
+                            let choice = egui::RadioButton::new(current == address, address.label());
+                            if ui.add(choice).clicked() && current != address {
+                                self.atom.bus.memory.sid_address = address;
+                                ui.close();
+                            }
+                        }
+                    });
                     ui.menu_button("SID model", |ui| {
                         let current = self.atom.bus.sid.model();
                         for model in SidModel::ALL {
@@ -1496,6 +1506,7 @@ mod settings_tests {
             show_border: false,
             snow: true,
             sid_fitted: false,
+            sid_address: SidAddress::NineFc0,
             sid_model: SidModel::Mos8580,
             volume: 0.7,
             muted: true,

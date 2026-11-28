@@ -393,6 +393,64 @@ fn a_sid_tune_from_the_archive_plays() {
 }
 
 /// How loud a stretch of audio is: the RMS once its steady level is removed.
+/// Start the first tune of an archive folder of SID tunes, with the card at
+/// `address`, and say how loud it comes out (0 if the menu never appeared).
+fn first_tune_level(folder: &str, address: atom_rs::machine::memory::SidAddress) -> f32 {
+    let mut atom = Atom::new();
+    atom.use_sd_card(Path::new("roms"), ARCHIVE.into())
+        .expect("AtoMMC ROMs load");
+    atom.bus.memory.sid_address = address;
+    atom.bus.set_audio_sample_rate(44_100);
+    atom.bus.sound.enabled = true;
+    for _ in 0..120 {
+        atom.run_frame();
+    }
+    let mut typist = Typist::new();
+    typist.type_text(&format!("*CWD ASA/SID/{folder}\n*RUN SIDMENU\n"), 0);
+    assert!(
+        run_until(&mut atom, &mut typist, 3000, |a| screen_has(a, "SPC=PLAY")),
+        "the {folder} menu never appeared:\n{}",
+        atom.screen_text().join("\n")
+    );
+    run_until(&mut atom, &mut typist, 100, |_| false);
+    atom.bus.sound.take_samples(); // forget the menu
+    hold_key(&mut atom, "SPACE", 10);
+    run_until(&mut atom, &mut typist, 150, |_| false);
+    ac_level(&atom.bus.sound.take_samples())
+}
+
+/// The archive has two copies of its SID tunes: `ATOMSID` for a card at BDC0
+/// and `DAVESID` for one at 9FC0. Each is silent with the card at the other
+/// address, which is why the card's address is a Hardware option.
+#[test]
+fn each_sid_collection_plays_only_with_the_card_at_its_address() {
+    use atom_rs::machine::memory::SidAddress::{Bdc0, NineFc0};
+    for folder in ["ATOMSID", "DAVESID"] {
+        if !Path::new(ARCHIVE)
+            .join("ASA/SID")
+            .join(folder)
+            .join("SIDMENU")
+            .exists()
+            || !Path::new("roms/ramrom.rom").exists()
+        {
+            common::skipped("needs the archive (./scripts/get_archive.sh) and roms/ramrom.rom");
+            return;
+        }
+    }
+    for (folder, right, wrong) in [("ATOMSID", Bdc0, NineFc0), ("DAVESID", NineFc0, Bdc0)] {
+        let plays = first_tune_level(folder, right);
+        assert!(
+            plays > 0.01,
+            "{folder} with the card at {right:?}: level {plays}"
+        );
+        let silent = first_tune_level(folder, wrong);
+        assert!(
+            silent < 0.001,
+            "{folder} with the card at {wrong:?}: level {silent}"
+        );
+    }
+}
+
 fn ac_level(samples: &[f32]) -> f32 {
     let mean = samples.iter().sum::<f32>() / samples.len().max(1) as f32;
     let power = samples.iter().map(|s| (s - mean) * (s - mean)).sum::<f32>();

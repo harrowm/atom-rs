@@ -76,6 +76,46 @@ pub enum Region {
     Unmapped,
 }
 
+/// Where the SID sound card is mapped. Two positions are in use, and software
+/// is written for one or the other: the archive has two copies of its SID tunes
+/// (`ASA/SID/ATOMSID` for `BDC0`, `ASA/SID/DAVESID` for `9FC0`), and its manual
+/// page for the SID registers says "`#BDC0-#BDDC` or `#9FC0-#9FDC`".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SidAddress {
+    /// `BDC0-BDDF`, in the Atom's I/O page: the AtomSID card, the
+    /// AtomGodilVideo board and Atomulator.
+    #[default]
+    Bdc0,
+    /// `9FC0-9FDF`, in the top of the video RAM space (which has nothing else
+    /// there): the position the archive's `DAVESID` tunes expect.
+    NineFc0,
+}
+
+impl SidAddress {
+    pub const ALL: [SidAddress; 2] = [SidAddress::Bdc0, SidAddress::NineFc0];
+
+    /// The address of the first of the card's 32 registers.
+    pub fn first(self) -> u16 {
+        match self {
+            SidAddress::Bdc0 => 0xBDC0,
+            SidAddress::NineFc0 => 0x9FC0,
+        }
+    }
+
+    /// Does the card answer at this address?
+    pub fn contains(self, addr: u16) -> bool {
+        (self.first()..self.first() + 32).contains(&addr)
+    }
+
+    /// How it is named in the menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            SidAddress::Bdc0 => "BDC0-BDDF (AtomSID, GODIL, Atomulator)",
+            SidAddress::NineFc0 => "9FC0-9FDF (the archive's DAVESID tunes)",
+        }
+    }
+}
+
 /// How much RAM the Atom has: the six configurations Atomulator offers, from
 /// a bare machine to one with every expansion fitted.
 ///
@@ -190,9 +230,11 @@ pub struct Memory {
     preset: RamPreset,
     /// Is the disk interface fitted? (True once a disk ROM is loaded.)
     pub disk_interface_fitted: bool,
-    /// Is a SID sound card fitted (at `BDC0-BDDF`)? Atomulator has one by
-    /// default, so it is here too; programs that do not use it never notice.
+    /// Is a SID sound card fitted? Atomulator has one by default, so it is here
+    /// too; programs that do not use it never notice.
     pub sid_fitted: bool,
+    /// Where the SID card answers (see [`SidAddress`]).
+    pub sid_address: SidAddress,
     /// The Ramoth RAM/ROM board, if fitted. It takes over the ROM sockets, the
     /// page at `0A00` and the top of the I/O page (see [`RamRomBoard`]).
     pub board: Option<RamRomBoard>,
@@ -224,6 +266,7 @@ impl Memory {
             preset,
             disk_interface_fitted: false,
             sid_fitted: true,
+            sid_address: SidAddress::default(),
             board: None,
             video_ram_kb: MAX_VIDEO_RAM_KB,
             gdos: None,
@@ -278,6 +321,9 @@ impl Memory {
     /// Decode an address into the device that answers it.
     pub fn region(&self, addr: u16) -> Region {
         match addr {
+            // The SID card is decoded ahead of everything else it might overlap:
+            // at 9FC0 it shadows the top of the video RAM space.
+            a if self.sid_fitted && self.sid_address.contains(a) => Region::Sid,
             // With the RAM/ROM board its flags decide whether 0A00 is RAM or the
             // floppy controller, whatever the RAM layout says.
             0x0A00..=0x0AFF if self.board_selects_floppy_controller() => Region::Fdc,
@@ -289,7 +335,6 @@ impl Memory {
             0xB400..=0xB7FF => Region::AtoMmc,
             0xB800..=0xBBFF => Region::Via,
             0xBC10..=0xBC14 if self.gdos.is_some() => Region::Gdos1770,
-            0xBDC0..=0xBDDF if self.sid_fitted => Region::Sid,
             0xBC00..=0xBFFF if self.board.is_some() => Region::RamRom,
             0xC000..=0xCFFF => Region::Rom(RomSlot::Basic),
             0xD000..=0xDFFF => Region::Rom(RomSlot::FloatingPoint),
@@ -539,5 +584,77 @@ mod tests {
     fn empty_rom_socket_reads_open_bus() {
         let memory = Memory::new(RamPreset::With16KExpansion);
         assert_eq!(memory.read_rom(RomSlot::Basic, 0xC123), 0xC1);
+    }
+
+    // ---- Where the SID card answers ----------------------------------------------------
+
+    #[test]
+    fn the_sid_is_at_bdc0_unless_moved() {
+        let memory = Memory::new(RamPreset::With22KExpansion);
+        assert_eq!(memory.sid_address, SidAddress::Bdc0);
+        assert_eq!(memory.region(0xBDC0), Region::Sid);
+        assert_eq!(memory.region(0xBDDF), Region::Sid);
+        assert_ne!(memory.region(0xBDBF), Region::Sid);
+        assert_ne!(memory.region(0xBDE0), Region::Sid);
+        assert_eq!(
+            memory.region(0x9FC0),
+            Region::VideoRam,
+            "8K of video RAM is fitted"
+        );
+    }
+
+    #[test]
+    fn at_9fc0_the_sid_shadows_the_top_of_the_video_ram_and_leaves_bdc0_empty() {
+        let mut memory = Memory::new(RamPreset::With22KExpansion);
+        memory.sid_address = SidAddress::NineFc0;
+        assert_eq!(memory.region(0x9FC0), Region::Sid);
+        assert_eq!(memory.region(0x9FDF), Region::Sid);
+        assert_eq!(memory.region(0x9FBF), Region::VideoRam, "just below it");
+        assert_eq!(memory.region(0x9FE0), Region::VideoRam, "just above it");
+        assert_eq!(
+            memory.region(0xBDC0),
+            Region::Unmapped,
+            "nothing answers at the old place"
+        );
+    }
+
+    #[test]
+    fn a_card_that_is_not_fitted_answers_at_neither_address() {
+        let mut memory = Memory::new(RamPreset::With22KExpansion);
+        memory.sid_fitted = false;
+        for address in SidAddress::ALL {
+            memory.sid_address = address;
+            assert_ne!(memory.region(address.first()), Region::Sid);
+        }
+    }
+
+    #[test]
+    fn the_two_addresses_are_32_registers_each_and_named() {
+        assert_eq!(SidAddress::Bdc0.first(), 0xBDC0);
+        assert_eq!(SidAddress::NineFc0.first(), 0x9FC0);
+        for address in SidAddress::ALL {
+            assert!(address.contains(address.first()));
+            assert!(address.contains(address.first() + 31));
+            assert!(!address.contains(address.first() + 32));
+            assert!(!address.contains(address.first() - 1));
+            assert!(
+                address
+                    .label()
+                    .starts_with(&format!("{:X}", address.first()))
+            );
+        }
+    }
+
+    #[test]
+    fn the_sid_decoding_does_not_disturb_the_other_devices_around_it() {
+        for address in SidAddress::ALL {
+            let mut memory = Memory::new(RamPreset::With22KExpansion);
+            memory.sid_address = address;
+            assert_eq!(memory.region(0xB000), Region::Ppi);
+            assert_eq!(memory.region(0xB800), Region::Via);
+            assert_eq!(memory.region(0xC000), Region::Rom(RomSlot::Basic));
+            assert_eq!(memory.region(0x8000), Region::VideoRam);
+            assert_eq!(memory.region(0x2900), Region::Ram);
+        }
     }
 }

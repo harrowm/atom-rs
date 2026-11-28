@@ -2,7 +2,8 @@
 //!
 //! The SID (MOS 6581, from the Commodore 64) has three voices, each with a
 //! choice of waveform and its own volume envelope, plus a filter. Several
-//! add-on cards put one in the Atom, mapped at `BDC0-BDDF` (32 registers),
+//! add-on cards put one in the Atom, mapped at `BDC0-BDDF` (32 registers; see
+//! [`SidAddress`](super::memory::SidAddress) for the other position, `9FC0`),
 //! and tunes from the Atom Software Archive's `SID` folder use it. It is
 //! clocked from the Atom's 1 MHz clock, as in Atomulator.
 //!

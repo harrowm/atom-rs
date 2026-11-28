@@ -1149,4 +1149,60 @@ mod tests {
         assert_eq!(atom.step(), 4);
         assert_eq!(atom.bus.memory.ram[0x0010], 0x42);
     }
+
+    /// Start voice 3 running (a sawtooth) through the bus at `base` and see
+    /// whether its oscillator output, readable at `base + $1B`, moves.
+    fn voice_three_moves(atom: &mut Atom, base: u16) -> bool {
+        use crate::cpu::Bus;
+        atom.bus.sound.enabled = true; // the chip only runs while sound is being made
+        atom.bus.write(base + 0x18, 0x0F); // volume up (a chip at volume 0 is not stepped)
+        atom.bus.write(base + 0x0E, 0xFF); // frequency low
+        atom.bus.write(base + 0x0F, 0x40); // frequency high
+        atom.bus.write(base + 0x12, 0x21); // sawtooth, gate on
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..40 {
+            atom.run_cycles(500);
+            seen.insert(atom.bus.read(base + 0x1B));
+        }
+        seen.len() > 3
+    }
+
+    #[test]
+    fn the_sid_answers_at_the_address_it_is_set_to_and_only_there() {
+        use crate::machine::memory::SidAddress;
+        let mut atom = Atom::new();
+        assert!(
+            voice_three_moves(&mut atom, 0xBDC0),
+            "by default it is at BDC0"
+        );
+        assert!(
+            !voice_three_moves(&mut atom, 0x9FC0),
+            "and not at 9FC0: that is video RAM"
+        );
+
+        let mut atom = Atom::new();
+        atom.bus.memory.sid_address = SidAddress::NineFc0;
+        assert!(voice_three_moves(&mut atom, 0x9FC0), "moved to 9FC0");
+        assert!(
+            !voice_three_moves(&mut atom, 0xBDC0),
+            "and no longer at BDC0"
+        );
+    }
+
+    #[test]
+    fn writes_to_9fc0_reach_the_sid_instead_of_the_video_ram_underneath() {
+        use crate::cpu::Bus;
+        use crate::machine::memory::SidAddress;
+        let mut atom = Atom::new();
+        atom.bus.write(0x9FC5, 0x77); // video RAM while the card is at BDC0
+        assert_eq!(atom.bus.peek(0x9FC5), 0x77);
+        atom.bus.memory.sid_address = SidAddress::NineFc0;
+        atom.bus.write(0x9FC5, 0x55); // now this is a SID register
+        atom.bus.memory.sid_address = SidAddress::Bdc0;
+        assert_eq!(
+            atom.bus.peek(0x9FC5),
+            0x77,
+            "the video RAM byte was not touched"
+        );
+    }
 }

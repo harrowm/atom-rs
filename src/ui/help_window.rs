@@ -145,7 +145,7 @@ fn help_sections() -> &'static [Section] {
                 "Run: reset (F12, the BREAK key), pause, and the speed slider (up to 100 times real speed).",
                 "Tape and Disk: tapes and floppy disk images. Disk is greyed out on machines with no floppy drives.",
                 "Sound: mute and volume. Sound plays at normal speed or slower.",
-                "Hardware: the kind of machine, its RAM, the video RAM, the colour board, the screen border, video snow, the SID sound card and its model, and the ROMs.",
+                "Hardware: the kind of machine, its RAM, the video RAM, the colour board, the screen border, video snow, the SID sound card with its address (BDC0 or 9FC0, to suit the tunes you play) and model, and the ROMs.",
                 "Your choices (machine, RAM, sound, display and so on) are remembered next time. They are kept in ~/.config/atom-rs/settings.json; delete that file to start afresh.",
                 "Input: the joystick on the keyboard (arrow keys and Space), and the keyboard mapping window.",
                 "View: how the picture is scaled, and full screen. Debug: windows for the CPU, a disassembler, memory, breakpoints and the chips, a command box where you type commands such as break 2900, break 2900 if a==5, s 10, out, set a 41 or help, and an instruction history that records what ran.",
